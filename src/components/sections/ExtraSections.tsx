@@ -26,7 +26,7 @@ function ActivityFeed() {
         idx.current++
         return next.slice(-5)
       })
-    }, 4000)  // slowed to 4s to reduce re-renders
+    }, 6000)  // slowed to 6s to reduce re-renders
     return () => clearInterval(t)
   }, [])
 

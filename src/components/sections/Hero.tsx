@@ -36,7 +36,7 @@ export default function Hero() {
     vid.muted = true
     vid.playsInline = true
     vid.loop = false
-    vid.preload = 'auto'
+    vid.preload = 'metadata'
     vid.play().catch(() => {})
 
     const onEnd = () => {

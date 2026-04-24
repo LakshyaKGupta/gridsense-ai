@@ -2,9 +2,11 @@ import Cursor from './components/ui/Cursor'
 import Navbar from './components/layout/Navbar'
 import Footer from './components/layout/Footer'
 import Hero from './components/sections/Hero'
-import DemoSection from './components/sections/DemoSection'
-import Sections from './components/sections/Sections'
-import ExtraSections from './components/sections/ExtraSections'
+import { lazy, Suspense } from 'react'
+
+const DemoSection = lazy(() => import('./components/sections/DemoSection'))
+const Sections = lazy(() => import('./components/sections/Sections'))
+const ExtraSections = lazy(() => import('./components/sections/ExtraSections'))
 
 export default function App() {
   return (
@@ -16,13 +18,19 @@ export default function App() {
       <Hero />
 
       {/* 2. Demo — immediately after hero */}
-      <DemoSection />
+      <Suspense fallback={<div>Loading...</div>}>
+        <DemoSection />
+      </Suspense>
 
       {/* 3. Trust + Problem/Solution + How It Works + Metrics + Use Cases + CTA */}
-      <Sections />
+      <Suspense fallback={<div>Loading...</div>}>
+        <Sections />
+      </Suspense>
 
       {/* 4. Three extra animated sections */}
-      <ExtraSections />
+      <Suspense fallback={<div>Loading...</div>}>
+        <ExtraSections />
+      </Suspense>
 
       {/* 5. Footer with columns */}
       <Footer />

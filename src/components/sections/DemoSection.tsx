@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
+import { memo } from 'react'
 
 const BASE = [12,9,7,6,5,8,18,32,45,48,42,38,35,36,40,44,62,88,96,91,78,55,34,18]
 const OPT  = [12,9,7,6,5,8,18,32,45,48,42,38,35,36,40,44,52,65,70,64,55,44,30,20]
@@ -28,7 +29,7 @@ const scheds = [
   { time: '2:00 AM – 4:00 AM',   delta: '−14 kW', pct: 56, col: '#00E5A0' },
 ]
 
-export default function DemoSection() {
+function DemoSection() {
   const [opt,  setOpt]  = useState(false)
   const [grid, setGrid] = useState(makeGrid(true))
   const [label, setLabel] = useState('')
@@ -42,7 +43,7 @@ export default function DemoSection() {
       setGrid(makeGrid(!next))
       setLabel(next ? '✓ AI Optimization applied' : '⚠ Reverting to unmanaged')
       setTimeout(() => setLabel(''), 1800)
-    }, 4000)
+    }, 8000)
     return () => clearTimeout(timer.current)
   }, [opt])
 
@@ -288,3 +289,5 @@ export default function DemoSection() {
     </section>
   )
 }
+
+export default memo(DemoSection)
