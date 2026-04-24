@@ -26,7 +26,7 @@ function ActivityFeed() {
         idx.current++
         return next.slice(-5)
       })
-    }, 2800)
+    }, 4000)  // slowed to 4s to reduce re-renders
     return () => clearInterval(t)
   }, [])
 
@@ -191,19 +191,16 @@ function ROICalc() {
               { label:'Infra Deferred (MW)', val:`${infraDefer} MW`, col:'#F59E0B', icon:'🏗' },
               { label:'CO₂ Avoided (t/yr)', val:`${co2} t`, col:'#A78BFA', icon:'🌿' },
             ].map(c => (
-              <motion.div key={c.label}
-                layout
+              <div key={c.label}
                 style={{ background:'#0F1419', border:`1px solid ${c.col}22`,
                   borderRadius:14, padding:'22px 18px', textAlign:'center' }}>
                 <div style={{ fontSize:26, marginBottom:8 }}>{c.icon}</div>
-                <motion.div
-                  key={c.val}
-                  initial={{opacity:0,y:8}} animate={{opacity:1,y:0}}
-                  style={{ fontSize:22, fontWeight:900, letterSpacing:-1, color:c.col, marginBottom:5 }}>
+                <div style={{ fontSize:22, fontWeight:900, letterSpacing:-1, color:c.col, marginBottom:5,
+                  transition:'color 0.3s' }}>
                   {c.val}
-                </motion.div>
+                </div>
                 <div style={{ fontSize:11, color:'#4A5568', lineHeight:1.4 }}>{c.label}</div>
-              </motion.div>
+              </div>
             ))}
           </motion.div>
         </div>
