@@ -6,3 +6,4 @@ dist/
 .env.local
 .env.production
 *.log
+Isometric_illustration_transitio*.mp4
