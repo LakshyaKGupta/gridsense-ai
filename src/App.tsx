@@ -4,9 +4,11 @@ import Footer from './components/layout/Footer'
 import Hero from './components/sections/Hero'
 import { lazy, Suspense } from 'react'
 
-const DemoSection = lazy(() => import('./components/sections/DemoSection'))
-const Sections = lazy(() => import('./components/sections/Sections'))
-const ExtraSections = lazy(() => import('./components/sections/ExtraSections'))
+const ProblemSolution = lazy(() => import('./components/sections/ProblemSolution'))
+const HowItWorks = lazy(() => import('./components/sections/HowItWorks'))
+const LiveDemo = lazy(() => import('./components/sections/LiveDemo'))
+const ImpactMetrics = lazy(() => import('./components/sections/ImpactMetrics'))
+const CTA = lazy(() => import('./components/sections/CTA'))
 
 export default function App() {
   return (
@@ -14,25 +16,33 @@ export default function App() {
       <Cursor />
       <Navbar />
       
-      {/* 1. Hero — full screen video */}
+      {/* 1. Hero — epic full screen */}
       <Hero />
 
-      {/* 2. Demo — immediately after hero */}
+      {/* 2. Problem & Solution */}
       <Suspense fallback={<div>Loading...</div>}>
-        <DemoSection />
+        <ProblemSolution />
       </Suspense>
 
-      {/* 3. Trust + Problem/Solution + How It Works + Metrics + Use Cases + CTA */}
+      {/* 3. How It Works */}
       <Suspense fallback={<div>Loading...</div>}>
-        <Sections />
+        <HowItWorks />
       </Suspense>
 
-      {/* 4. Three extra animated sections */}
+      {/* 4. Live Demo */}
       <Suspense fallback={<div>Loading...</div>}>
-        <ExtraSections />
+        <LiveDemo />
       </Suspense>
 
-      {/* 5. Footer with columns */}
+      {/* 5. Impact Metrics */}
+      <Suspense fallback={<div>Loading...</div>}>
+        <ImpactMetrics />
+      </Suspense>
+
+      {/* 6. CTA & Footer */}
+      <Suspense fallback={<div>Loading...</div>}>
+        <CTA />
+      </Suspense>
       <Footer />
     </>
   )

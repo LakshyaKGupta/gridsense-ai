@@ -1,28 +1,29 @@
 import { useEffect, useRef, useState } from 'react'
 import { motion } from 'framer-motion'
 
-// CSS float keyframes injected once — runs on compositor thread, not JS
+// Enhanced float animations
 const FLOAT_CSS = `
-@keyframes floatA { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-8px)} }
-@keyframes floatB { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-6px)} }
-@keyframes floatC { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-10px)} }
+@keyframes floatA { 0%,100%{transform:translateY(0) rotate(0deg)} 50%{transform:translateY(-12px) rotate(2deg)} }
+@keyframes floatB { 0%,100%{transform:translateY(0) rotate(0deg)} 50%{transform:translateY(-8px) rotate(-2deg)} }
+@keyframes floatC { 0%,100%{transform:translateY(0) rotate(0deg)} 50%{transform:translateY(-15px) rotate(1deg)} }
+@keyframes pulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.1)} }
 `
 
 const FLOATS = [
-  { icon:'⚡', label:'Load Spike',       val:'+96%',      color:'#FF4757', x:'8%',  y:'18%', delay:0.15, anim:'floatA', dur:'3.4s' },
-  { icon:'🔋', label:'Charging Active',  val:'247 EVs',   color:'#00E5A0', x:'80%', y:'13%', delay:0.25, anim:'floatB', dur:'4.0s' },
-  { icon:'📊', label:'Demand Forecast',  val:'24h ahead', color:'#00C8FF', x:'86%', y:'52%', delay:0.35, anim:'floatC', dur:'3.2s' },
-  { icon:'🔮', label:'AI Confidence',    val:'92%',       color:'#A78BFA', x:'5%',  y:'67%', delay:0.20, anim:'floatA', dur:'3.8s' },
-  { icon:'🏙', label:'Zones Monitored',  val:'198',       color:'#F59E0B', x:'76%', y:'77%', delay:0.40, anim:'floatB', dur:'3.6s' },
-  { icon:'📉', label:'Peak Reduced',     val:'−23 kW',    color:'#00E5A0', x:'13%', y:'42%', delay:0.30, anim:'floatC', dur:'4.2s' },
+  { icon:'⚡', label:'Load Spike', val:'+96%', color:'#FF4757', x:'10%', y:'15%', delay:0.1, anim:'floatA', dur:'3s', size: 1.2 },
+  { icon:'🔋', label:'EV Charging', val:'247 units', color:'#00E5A0', x:'85%', y:'12%', delay:0.2, anim:'floatB', dur:'3.5s', size: 1 },
+  { icon:'📊', label:'AI Forecast', val:'24h ahead', color:'#00C8FF', x:'88%', y:'55%', delay:0.3, anim:'floatC', dur:'2.8s', size: 1.1 },
+  { icon:'🔮', label:'Accuracy', val:'92%', color:'#A78BFA', x:'8%', y:'70%', delay:0.15, anim:'floatA', dur:'3.2s', size: 0.9 },
+  { icon:'🏙', label:'Zones', val:'198', color:'#F59E0B', x:'80%', y:'80%', delay:0.35, anim:'floatB', dur:'3.8s', size: 1.3 },
+  { icon:'📉', label:'Peak Reduced', val:'−23 kW', color:'#00E5A0', x:'15%', y:'45%', delay:0.25, anim:'floatC', dur:'4s', size: 1 },
 ]
 
-
 export default function Hero() {
-  const vidRef      = useRef<HTMLVideoElement>(null)
-  const [vidOp, setVidOp]   = useState(1)
+  const vidRef = useRef<HTMLVideoElement>(null)
+  const [vidOp, setVidOp] = useState(1)
+  const [heroVisible, setHeroVisible] = useState(false)
 
-  // Inject CSS float keyframes once
+  // Inject CSS
   useEffect(() => {
     if (document.getElementById('float-kf')) return
     const s = document.createElement('style')
@@ -30,6 +31,7 @@ export default function Hero() {
     document.head.appendChild(s)
   }, [])
 
+  // Video handling
   useEffect(() => {
     const vid = vidRef.current
     if (!vid) return
@@ -40,207 +42,316 @@ export default function Hero() {
     vid.play().catch(() => {})
 
     const onEnd = () => {
-      // Hold 5s on last frame → fade → restart
       setTimeout(() => {
         setVidOp(0)
         setTimeout(() => {
           if (vidRef.current) { vidRef.current.currentTime = 0; vidRef.current.play() }
           setVidOp(1)
-        }, 800)
-      }, 5000)
+        }, 1000)
+      }, 6000)
     }
 
     vid.addEventListener('ended', onEnd)
     return () => vid.removeEventListener('ended', onEnd)
   }, [])
 
+  // Hero visibility
+  useEffect(() => {
+    setHeroVisible(true)
+  }, [])
+
   return (
     <section id="hero" style={{
       position:'relative', width:'100%', height:'100vh',
-      minHeight:700, overflow:'hidden', background:'#080c12',
+      minHeight:750, overflow:'hidden', background:'#080c12',
     }}>
       {/* Video */}
-      <video
+      <motion.video
         ref={vidRef}
         src="/hero.mp4"
         muted playsInline
-        preload="auto"
+        preload="metadata"
         style={{
           position:'absolute', inset:0,
           width:'100%', height:'100%',
           objectFit:'cover',
-          objectPosition:'center top',   
+          objectPosition:'center top',
           opacity: vidOp,
-          transition:'opacity 0.8s ease',
-          // GPU layer — no repaints, slight scale to hide logo, subtle filter for quality
-          transform:'scale(1.05) translateZ(0)',
-          filter: 'contrast(1.05) saturate(1.05)',
+          transition:'opacity 1.2s ease',
+          transform:'scale(1.08) translateZ(0)',
+          filter: 'contrast(1.08) saturate(1.1) brightness(1.05)',
           willChange:'opacity, transform, filter',
           zIndex:0,
         }}
       />
 
-      {/* Gradient mask */}
+      {/* Enhanced gradient mask */}
       <div style={{
         position:'absolute', inset:0, zIndex:2, pointerEvents:'none',
         background:`
-          linear-gradient(to top,    rgba(8,12,18,1) 0%, rgba(8,12,18,0.65) 14%, transparent 36%),
-          linear-gradient(to bottom, rgba(8,12,18,0.55) 0%, transparent 18%),
-          linear-gradient(to right,  rgba(8,12,18,0.45) 0%, transparent 24%),
-          linear-gradient(to left,   rgba(8,12,18,0.35) 0%, transparent 20%)
+          linear-gradient(to top, rgba(8,12,18,1) 0%, rgba(8,12,18,0.7) 12%, transparent 32%),
+          linear-gradient(to bottom, rgba(8,12,18,0.6) 0%, transparent 16%),
+          linear-gradient(to right, rgba(8,12,18,0.5) 0%, transparent 22%),
+          linear-gradient(to left, rgba(8,12,18,0.4) 0%, transparent 18%),
+          radial-gradient(ellipse 120% 100% at 50% 50%, transparent 40%, rgba(8,12,18,0.3) 100%)
         `,
       }} />
 
-      {/* Hard VEO logo kill — bottom-right corner */}
+      {/* Animated grid overlay */}
+      <motion.div
+        animate={{ opacity: [0.1, 0.2, 0.1] }}
+        transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
+        style={{
+          position:'absolute', inset:0, zIndex:1, pointerEvents:'none',
+          backgroundImage:`
+            linear-gradient(rgba(0,229,160,0.08) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(0,229,160,0.08) 1px, transparent 1px)
+          `,
+          backgroundSize:'80px 80px',
+          maskImage:'radial-gradient(ellipse 100% 100% at 50% 50%, black 15%, transparent 85%)',
+        }}
+      />
+
+      {/* Hard logo kill */}
       <div style={{
         position:'absolute', bottom:0, right:0, zIndex:3, pointerEvents:'none',
-        width:280, height:110,
-        background:'linear-gradient(135deg, transparent 0%, rgba(8,12,18,1) 48%)',
+        width:300, height:120,
+        background:'linear-gradient(135deg, transparent 0%, rgba(8,12,18,1) 50%)',
       }} />
 
-      {/* Grid lines — static, no animation */}
-      <div style={{
-        position:'absolute', inset:0, zIndex:1, pointerEvents:'none',
-        backgroundImage:`
-          linear-gradient(rgba(0,229,160,0.022) 1px, transparent 1px),
-          linear-gradient(90deg, rgba(0,229,160,0.022) 1px, transparent 1px)
-        `,
-        backgroundSize:'72px 72px',
-        maskImage:'radial-gradient(ellipse 90% 90% at 50% 50%, black 20%, transparent 80%)',
-      }} />
+      {/* Enhanced floating elements */}
+      {FLOATS.map((f, i) => (
+        <motion.div
+          key={i}
+          initial={{ opacity:0, scale:0, rotate: -10 }}
+          animate={heroVisible ? { opacity:1, scale: f.size, rotate: 0 } : {}}
+          transition={{
+            delay: f.delay,
+            duration: 0.8,
+            type: 'spring',
+            stiffness: 200
+          }}
+          style={{
+            position:'absolute', left:f.x, top:f.y, zIndex:5, pointerEvents:'none',
+            animation:`${f.anim} ${f.dur} ease-in-out infinite`,
+            animationDelay:`${i * 0.2}s`,
+            willChange:'transform',
+          }}
+        >
+          <motion.div
+            whileHover={{ scale: 1.1 }}
+            style={{
+              background:'rgba(8,12,18,0.85)',
+              border:`1px solid ${f.color}30`,
+              borderRadius:14, padding:'12px 16px',
+              display:'flex', alignItems:'center', gap:10,
+              backdropFilter:'blur(16px)',
+              WebkitBackdropFilter:'blur(16px)',
+              boxShadow: `0 8px 32px rgba(0,0,0,0.3), 0 0 16px ${f.color}20`,
+            }}
+          >
+            <motion.span
+              animate={{ scale: [1, 1.2, 1] }}
+              transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut', delay: i * 0.5 }}
+              style={{ fontSize:20 }}
+            >
+              {f.icon}
+            </motion.span>
+            <div>
+              <div style={{ fontSize:15, fontWeight:800, color:f.color, letterSpacing:-0.4, fontVariantNumeric:'tabular-nums' }}>{f.val}</div>
+              <div style={{ fontSize:11, color:'#5A6B80', marginTop:2 }}>{f.label}</div>
+            </div>
+          </motion.div>
+        </motion.div>
+      ))}
 
+      {/* Central content with enhanced animations */}
+      <motion.div
+        initial="hidden"
+        animate={heroVisible ? "show" : "hidden"}
+        variants={{
+          show: {
+            transition: {
+              staggerChildren: 0.15,
+              delayChildren: 0.2
+            }
+          }
+        }}
+        style={{
+          position:'absolute', inset:0, zIndex:6,
+          display:'flex', flexDirection:'column',
+          alignItems:'center', justifyContent:'center',
+          padding:'0 6%', textAlign:'center',
+        }}
+      >
+        <motion.h1
+          variants={{
+            hidden: { opacity: 0, y: 50, scale: 0.9 },
+            show: { opacity: 1, y: 0, scale: 1, transition: { duration: 0.8, ease: 'easeOut' } }
+          }}
+          id="hero-title"
+          style={{
+            fontSize:'clamp(42px,6vw,80px)',
+            fontWeight:900, letterSpacing:'-4px',
+            lineHeight:1.02, marginBottom:24, maxWidth:900,
+          }}
+        >
+          Optimize EV Charging.{' '}
+          <motion.span
+            animate={{ backgroundPosition: ['0% 50%', '100% 50%', '0% 50%'] }}
+            transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
+            style={{
+              background:'linear-gradient(120deg,#00E5A0,#00C8FF,#F59E0B,#00E5A0)',
+              backgroundSize: '200% 200%',
+              WebkitBackgroundClip:'text', backgroundClip:'text',
+              WebkitTextFillColor:'transparent',
+            }}
+          >
+            Eliminate Grid Stress.
+          </motion.span>
+        </motion.h1>
 
-            {/* Floating icons — CSS animation (compositor thread, no JS) */}
-            {FLOATS.map((f, i) => (
-              <motion.div
-                key={i}
-                initial={{ opacity:0, scale:0.75 }}
-                animate={{ opacity:1, scale:1 }}
-                transition={{ delay: f.delay, duration:0.5, ease:'easeOut' }}
-                style={{
-                  position:'absolute', left:f.x, top:f.y, zIndex:5, pointerEvents:'none',
-                  // CSS float animation — no JS, runs on GPU
-                  animation:`${f.anim} ${f.dur} ease-in-out infinite`,
-                  animationDelay:`${i * 0.5}s`,
-                  willChange:'transform',
-                }}
-              >
-                <div style={{
-                  background:'rgba(8,12,18,0.82)',
-                  border:`1px solid ${f.color}28`,
-                  borderRadius:12, padding:'9px 13px',
-                  display:'flex', alignItems:'center', gap:9,
-                  // Minimal backdrop-filter — only where it matters
-                  backdropFilter:'blur(12px)',
-                  WebkitBackdropFilter:'blur(12px)',
-                }}>
-                  <span style={{ fontSize:18 }}>{f.icon}</span>
-                  <div>
-                    <div style={{ fontSize:13, fontWeight:800, color:f.color, letterSpacing:-0.4, fontVariantNumeric:'tabular-nums' }}>{f.val}</div>
-                    <div style={{ fontSize:10, color:'#5A6B80', marginTop:1 }}>{f.label}</div>
-                  </div>
-                </div>
-              </motion.div>
-            ))}
+        <motion.p
+          variants={{
+            hidden: { opacity: 0, y: 30 },
+            show: { opacity: 1, y: 0, transition: { duration: 0.7, ease: 'easeOut' } }
+          }}
+          id="hero-sub"
+          style={{
+            fontSize:'clamp(16px,1.6vw,19px)', color:'rgba(255,255,255,0.6)',
+            lineHeight:1.7, maxWidth:550, marginBottom:40,
+          }}
+        >
+          AI-powered demand prediction, scheduling, and infrastructure planning
+          for modern cities — zero hardware changes required.
+        </motion.p>
 
-            {/* Central content */}
+        <motion.div
+          variants={{
+            hidden: { opacity: 0, y: 25 },
+            show: { opacity: 1, y: 0, transition: { duration: 0.6, ease: 'easeOut' } }
+          }}
+          style={{ display:'flex', gap:16, flexWrap:'wrap', justifyContent:'center', marginBottom:60 }}
+        >
+          <motion.a
+            whileHover={{ scale: 1.05, y: -3 }}
+            whileTap={{ scale: 0.95 }}
+            className="btn btn-green"
+            href="#demo"
+            id="hero-sim-btn"
+            style={{
+              padding: '18px 36px', fontSize: 16, fontWeight: 700,
+              boxShadow: '0 0 40px rgba(0,229,160,0.4)'
+            }}
+          >
+            View Live Simulation →
+          </motion.a>
+          <motion.a
+            whileHover={{ scale: 1.05, y: -3 }}
+            whileTap={{ scale: 0.95 }}
+            className="btn btn-outline"
+            href="#cta"
+            id="hero-demo-btn"
+            style={{
+              padding: '18px 36px', fontSize: 16,
+              border: '2px solid rgba(255,255,255,0.25)'
+            }}
+          >
+            Request Demo
+          </motion.a>
+        </motion.div>
+
+        {/* Enhanced stats bar */}
+        <motion.div
+          variants={{
+            hidden: { opacity: 0, y: 20 },
+            show: { opacity: 1, y: 0, transition: { duration: 0.6, ease: 'easeOut' } }
+          }}
+          style={{
+            display:'flex', gap: 2,
+            background:'rgba(8,12,18,0.8)',
+            border:'1px solid rgba(255,255,255,0.08)',
+            borderRadius:16, overflow:'hidden',
+            backdropFilter:'blur(20px)',
+            WebkitBackdropFilter:'blur(20px)',
+          }}
+        >
+          {[
+            {num:'↓25%',label:'Peak Reduction'},
+            {num:'↑85%',label:'Forecast Accuracy'},
+            {num:'≤15%',label:'Error Margin'},
+            {num:'0',label:'Hardware Changes'},
+          ].map((s,i) => (
             <motion.div
-              initial="hidden" animate="show"
-              variants={{ show:{transition:{staggerChildren:0.1,delayChildren:0.04}} }}
+              key={s.label}
+              whileHover={{ backgroundColor: 'rgba(255,255,255,0.05)' }}
               style={{
-                position:'absolute', inset:0, zIndex:6,
-                display:'flex', flexDirection:'column',
-                alignItems:'center', justifyContent:'center',
-                padding:'0 6%', textAlign:'center',
+                padding:'18px 28px', textAlign:'center',
+                borderRight: i < 3 ? '1px solid rgba(255,255,255,0.06)' : 'none',
+                transition: 'background-color 0.3s ease'
               }}
             >
-              <motion.h1
-                variants={{ hidden:{opacity:0,y:30}, show:{opacity:1,y:0,transition:{duration:0.65,ease:'easeOut'}} }}
-                id="hero-title"
-                style={{
-                  fontSize:'clamp(38px,5.2vw,74px)',
-                  fontWeight:900, letterSpacing:'-3px',
-                  lineHeight:1.05, marginBottom:18, maxWidth:880,
-                }}
-              >
-                Optimize EV Charging.{' '}
-                <span style={{
-                  background:'linear-gradient(120deg,#00E5A0,#00C8FF)',
-                  WebkitBackgroundClip:'text', backgroundClip:'text',
-                  WebkitTextFillColor:'transparent',
-                }}>
-                  Eliminate Grid Stress.
-                </span>
-              </motion.h1>
-
-              <motion.p
-                variants={{ hidden:{opacity:0,y:20}, show:{opacity:1,y:0,transition:{duration:0.6,ease:'easeOut'}} }}
-                id="hero-sub"
-                style={{
-                  fontSize:'clamp(15px,1.4vw,17.5px)', color:'rgba(255,255,255,0.5)',
-                  lineHeight:1.72, maxWidth:520, marginBottom:32,
-                }}
-              >
-                AI-powered demand prediction, scheduling, and infrastructure planning
-                for modern cities — zero hardware changes required.
-              </motion.p>
-
               <motion.div
-                variants={{ hidden:{opacity:0,y:16}, show:{opacity:1,y:0,transition:{duration:0.55,ease:'easeOut'}} }}
-                style={{ display:'flex', gap:12, flexWrap:'wrap', justifyContent:'center', marginBottom:48 }}
-              >
-                <a className="btn btn-green"   href="#demo" id="hero-sim-btn">View Live Simulation →</a>
-                <a className="btn btn-outline" href="#cta"  id="hero-demo-btn">Request Demo</a>
-              </motion.div>
-
-              {/* Stats bar */}
-              <motion.div
-                variants={{ hidden:{opacity:0,y:12}, show:{opacity:1,y:0,transition:{duration:0.55,ease:'easeOut'}} }}
+                animate={{ scale: [1, 1.05, 1] }}
+                transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut', delay: i * 0.3 }}
                 style={{
-                  display:'flex',
-                  background:'rgba(8,12,18,0.7)',
-                  border:'1px solid rgba(255,255,255,0.07)',
-                  borderRadius:12, overflow:'hidden',
+                  fontSize:20, fontWeight:800, letterSpacing:-0.5,
+                  color:'#fff', lineHeight:1, marginBottom:6
                 }}
               >
-                {[
-                  {num:'↓25%',label:'Peak Load Reduction'},
-                  {num:'↑30%',label:'Grid Efficiency'},
-                  {num:'≤15%',label:'Forecast Error'},
-                  {num:'0',   label:'Hardware Changes'},
-                ].map((s,i) => (
-                  <div key={s.label} id={`hstat-${i}`} style={{
-                    padding:'14px 26px', textAlign:'center',
-                    borderRight: i < 3 ? '1px solid rgba(255,255,255,0.06)' : 'none',
-                  }}>
-                    <div style={{fontSize:19,fontWeight:800,letterSpacing:-0.5,color:'#fff',lineHeight:1}}>{s.num}</div>
-                    <div style={{fontSize:9.5,color:'#4A5568',textTransform:'uppercase',letterSpacing:'0.7px',marginTop:4}}>{s.label}</div>
-                  </div>
-                ))}
+                {s.num}
               </motion.div>
-            </motion.div>
-
-            {/* Scroll hint — CSS animation */}
-            <motion.div
-              initial={{opacity:0}} animate={{opacity:1}} transition={{delay:0.9}}
-              style={{
-                position:'absolute', bottom:26, left:'50%', transform:'translateX(-50%)',
-                zIndex:6, display:'flex', flexDirection:'column', alignItems:'center', gap:5,
-              }}
-            >
               <div style={{
-                width:20, height:30,
-                border:'1.5px solid rgba(255,255,255,0.14)',
-                borderRadius:10, display:'flex', justifyContent:'center', paddingTop:5,
+                fontSize:10, color:'#4A5568', textTransform:'uppercase',
+                letterSpacing:'0.8px', lineHeight:1.2
               }}>
-                <div style={{
-                  width:3, height:6, borderRadius:2,
-                  background:'rgba(0,229,160,0.7)',
-                  animation:'floatB 1.6s ease-in-out infinite',
-                }} />
+                {s.label}
               </div>
-              <span style={{fontSize:9,color:'rgba(255,255,255,0.2)',textTransform:'uppercase',letterSpacing:'1.5px'}}>Scroll</span>
             </motion.div>
+          ))}
+        </motion.div>
+      </motion.div>
+
+      {/* Enhanced scroll hint */}
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ delay: 1.2 }}
+        style={{
+          position:'absolute', bottom:32, left:'50%', transform:'translateX(-50%)',
+          zIndex:6, display:'flex', flexDirection:'column', alignItems:'center', gap:8,
+        }}
+      >
+        <motion.div
+          animate={{ y: [0, 8, 0] }}
+          transition={{ duration: 1.5, repeat: Infinity, ease: 'easeInOut' }}
+          style={{
+            width:22, height:32,
+            border:'2px solid rgba(255,255,255,0.2)',
+            borderRadius:12, display:'flex', justifyContent:'center', paddingTop:6,
+          }}
+        >
+          <motion.div
+            animate={{ y: [0, 4, 0] }}
+            transition={{ duration: 1.5, repeat: Infinity, ease: 'easeInOut', delay: 0.2 }}
+            style={{
+              width:4, height:8, borderRadius:2,
+              background:'linear-gradient(180deg,#00E5A0,#00C8FF)',
+              boxShadow: '0 0 8px rgba(0,229,160,0.6)'
+            }}
+          />
+        </motion.div>
+        <motion.span
+          animate={{ opacity: [0.5, 1, 0.5] }}
+          transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
+          style={{
+            fontSize:10, color:'rgba(255,255,255,0.3)',
+            textTransform:'uppercase', letterSpacing:'1.5px'
+          }}
+        >
+          Scroll to Explore
+        </motion.span>
+      </motion.div>
 
     </section>
   )
