@@ -7,3 +7,4 @@ dist/
 .env.production
 *.log
 Isometric_illustration_transitio*.mp4
+node_modules/
