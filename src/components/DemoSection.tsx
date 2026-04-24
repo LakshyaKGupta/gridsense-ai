@@ -1,239 +1,205 @@
 import { useEffect, useRef, useState } from 'react'
 import { motion } from 'framer-motion'
 
-// Demand data: 24 hours, index 18-21 = evening peak (problem zone)
+// 24h demand data
 const BASE = [12,9,7,6,5,8,18,32,45,48,42,38,35,36,40,44,62,88,96,91,78,55,34,18]
-const OPT  = [12,9,7,6,5,8,18,32,45,48,42,38,35,36,40,44,55,68,72,66,58,48,32,22]
-const HOURS = ['12a','2a','4a','6a','8a','10a','12p','2p','4p','6p','8p','10p']
+const OPT  = [12,9,7,6,5,8,18,32,45,48,42,38,35,36,40,44,52,65,70,64,55,44,30,20]
+const HLABELS = ['12a','3a','6a','9a','12p','3p','6p','9p']
 
-// 7×5 zone grid - heat values 0-100
 const makeGrid = (hot: boolean) =>
-  Array.from({ length: 35 }, (_, i) => {
-    const base = [90,85,40,30,95,60,20,80,92,35,25,88,45,18,
-                  75,88,30,20,82,40,15,60,70,28,18,65,35,12,
-                  45,55,22,15,50,28,10,][i] ?? 50
-    return hot ? base : Math.max(8, base * 0.28)
-  })
+  [90,85,40,30,95,60,20,80,92,35,25,88,45,18,75,88,30,20,82,40,15,
+   60,70,28,18,65,35,12,45,55,22,15,50,28,10].map(v =>
+    hot ? v : Math.max(6, Math.round(v * 0.26))
+  )
 
-function heatColor(v: number) {
-  if (v > 80) return { bg: '#FF4757', glow: 'rgba(255,71,87,0.45)' }
-  if (v > 60) return { bg: '#FF6B35', glow: 'rgba(255,107,53,0.35)' }
-  if (v > 40) return { bg: '#EAB308', glow: 'rgba(234,179,8,0.25)' }
-  if (v > 20) return { bg: '#00D48A', glow: 'rgba(0,212,138,0.2)' }
-  return        { bg: '#1E2D40',  glow: 'none' }
+const cellColor = (v: number) => {
+  if (v > 80) return { bg: '#FF4757', sh: 'rgba(255,71,87,0.5)' }
+  if (v > 60) return { bg: '#FF6B35', sh: 'rgba(255,107,53,0.4)' }
+  if (v > 35) return { bg: '#EAB308', sh: 'rgba(234,179,8,0.3)' }
+  if (v > 15) return { bg: '#00E5A0', sh: 'rgba(0,229,160,0.25)' }
+  return           { bg: '#1A2535',  sh: 'none' }
 }
 
-function barColor(v: number, isOpt: boolean) {
-  if (isOpt) return '#00D48A'
-  if (v > 80) return '#FF4757'
-  if (v > 60) return '#FF6B35'
-  return '#EAB308'
+const barColor = (v: number, opt: boolean) =>
+  opt ? '#00E5A0' : v > 80 ? '#FF4757' : v > 60 ? '#FF6B35' : '#EAB308'
+
+function useInView(threshold = 0.2) {
+  const ref = useRef<HTMLElement>(null)
+  const [seen, setSeen] = useState(false)
+  useEffect(() => {
+    const obs = new IntersectionObserver(([e]) => { if (e.isIntersecting) { setSeen(true); obs.disconnect() } }, { threshold })
+    if (ref.current) obs.observe(ref.current)
+    return () => obs.disconnect()
+  }, [])
+  return { ref, seen }
 }
 
 export default function DemoSection() {
-  const [optimized, setOptimized] = useState(false)
-  const [grid, setGrid]           = useState(makeGrid(true))
-  const [auto, setAuto]           = useState(true)
-  const timerRef = useRef<ReturnType<typeof setTimeout>>()
+  const [opt, setOpt] = useState(false)
+  const [auto, setAuto] = useState(true)
+  const [grid, setGrid] = useState(makeGrid(true))
+  const timer = useRef<ReturnType<typeof setTimeout>>()
+  const { ref, seen } = useInView()
 
   useEffect(() => {
     if (!auto) return
-    timerRef.current = setTimeout(() => {
-      setOptimized(o => {
-        const next = !o
-        setGrid(makeGrid(!next))
-        return next
-      })
-    }, 3500)
-    return () => clearTimeout(timerRef.current)
-  }, [optimized, auto])
+    timer.current = setTimeout(() => {
+      setOpt(o => { const n = !o; setGrid(makeGrid(!n)); return n })
+    }, 3800)
+    return () => clearTimeout(timer.current)
+  }, [opt, auto])
 
-  const data = optimized ? OPT : BASE
-  const maxV = 100
-
-  const toggle = () => {
-    setAuto(false)
-    setOptimized(o => { setGrid(makeGrid(o)); return !o })
-  }
-
+  const data = opt ? OPT : BASE
   const schedules = [
-    { time: '10:30 PM – 12:30 AM', pct: 88, delta: '−28 kW', col: '#00D48A' },
-    { time: '11:00 PM – 1:00 AM',  pct: 72, delta: '−19 kW', col: '#3B8EFF' },
-    { time: '2:00 AM – 4:00 AM',   pct: 55, delta: '−14 kW', col: '#00D48A' },
+    { time: '10:30 PM–12:30 AM', delta: '−28 kW', pct: 88, col: '#00E5A0' },
+    { time: '11:00 PM–1:00 AM',  delta: '−19 kW', pct: 72, col: '#00C8FF' },
+    { time: '2:00 AM–4:00 AM',   delta: '−14 kW', pct: 56, col: '#00E5A0' },
   ]
 
   return (
-    <section id="demo" style={{ padding: '90px 0' }}>
-      <div className="wrap">
-        <span className="sec-label">Live Intelligence Demo</span>
-        <h2 className="sec-title">
-          Watch AI Balance the Grid<br />in Real Time
-        </h2>
-        <p className="sec-body">
-          Toggle between unmanaged and AI-optimized states across Bengaluru's
-          ward zones. The platform shifts demand automatically — no infrastructure changes.
+    <section id="demo" ref={ref as React.RefObject<HTMLElement>} style={{ padding: '100px 0', borderTop: '1px solid var(--border)' }}>
+      <div style={{ maxWidth: 1280, margin: '0 auto', padding: '0 7%' }}>
+        <span className="s-label">Live Intelligence Demo</span>
+        <h2 className="s-h2">Watch AI Rebalance<br />the Grid in Real Time</h2>
+        <p className="s-body">
+          Toggle between unmanaged and AI-optimized states. The platform shifts
+          demand automatically — no infrastructure changes, no hardware.
         </p>
 
-        {/* Toggle */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginTop: 32 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginTop: 28 }}>
           <button
             id="demo-toggle"
-            className={`btn ${optimized ? 'btn-primary' : 'btn-ghost'}`}
-            onClick={toggle}
-            style={{ minWidth: 200 }}
+            className={`btn ${opt ? 'btn-green' : 'btn-outline'}`}
+            style={{ minWidth: 210 }}
+            onClick={() => { setAuto(false); setOpt(o => { setGrid(makeGrid(o)); return !o }) }}
           >
-            {optimized ? '✓ AI Optimized State' : '⚠ Unmanaged State'}
+            {opt ? '✓ AI Optimized' : '⚠ Unmanaged State'}
           </button>
-          <span style={{ fontSize: 12, color: 'var(--c-muted)' }}>
-            {auto ? 'Auto-cycling · ' : ''}{optimized ? 'Peak load reduced by 23%' : 'Evening spike active'}
+          <span style={{ fontSize: 12, color: 'var(--dim)' }}>
+            {auto && 'Auto-cycling · '}{opt ? 'Peak load reduced 27%' : 'Evening spike detected'}
           </span>
         </div>
 
         <div className="demo-wrap">
-          {/* Left: Heatmap + Chart */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-            {/* Zone Heatmap */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            {/* Heatmap */}
             <div className="demo-panel">
-              <div className="demo-panel-header">
-                <h4>Zone Demand Heatmap · Bengaluru</h4>
-                <span className={`demo-tab ${optimized ? 'inactive' : 'active'}`}
-                  style={{ color: optimized ? '#00D48A' : '#FF4757',
-                           background: optimized ? 'rgba(0,212,138,0.08)' : 'rgba(255,71,87,0.08)',
-                           border: `1px solid ${optimized ? 'rgba(0,212,138,0.2)' : 'rgba(255,71,87,0.2)'}`,
-                           padding: '3px 10px', borderRadius: 100, fontSize: 10, fontWeight: 700 }}>
-                  {optimized ? 'OPTIMIZED' : 'PEAK LOAD'}
+              <div className="demo-ph">
+                <h4>Zone Demand Heatmap · Bengaluru Wards</h4>
+                <span className={`demo-status ${opt ? 'ok' : 'bad'}`}>
+                  {opt ? 'OPTIMIZED' : 'PEAK LOAD'}
                 </span>
               </div>
               <div className="zone-grid">
                 {grid.map((v, i) => {
-                  const { bg, glow } = heatColor(v)
+                  const { bg, sh } = cellColor(v)
                   return (
-                    <div
-                      key={i}
-                      className="zone-cell"
-                      title={`Zone ${i + 1}: ${Math.round(v)}% load`}
-                      style={{
-                        backgroundColor: bg,
-                        boxShadow: glow !== 'none' ? `0 0 8px ${glow}` : 'none',
-                      }}
-                    />
+                    <div key={i} className="zone-cell"
+                      style={{ backgroundColor: bg, boxShadow: sh !== 'none' ? `0 0 7px ${sh}` : 'none' }}
+                      title={`Zone ${i+1}: ${Math.round(v)}%`} />
                   )
                 })}
               </div>
-              <div style={{ display: 'flex', gap: 12, marginTop: 14, flexWrap: 'wrap' }}>
-                {[
-                  { col: '#FF4757', label: 'Critical (>80%)' },
-                  { col: '#FF6B35', label: 'High (>60%)' },
-                  { col: '#EAB308', label: 'Medium' },
-                  { col: '#00D48A', label: 'Low' },
-                ].map(l => (
-                  <div key={l.label} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                    <div style={{ width: 8, height: 8, borderRadius: 2, background: l.col }} />
-                    <span style={{ fontSize: 10, color: 'var(--c-muted)' }}>{l.label}</span>
+              <div style={{ display: 'flex', gap: 10, marginTop: 12, flexWrap: 'wrap' }}>
+                {[['#FF4757','Critical >80%'],['#FF6B35','High >60%'],['#EAB308','Medium'],['#00E5A0','Low']].map(([c,l]) => (
+                  <div key={l} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                    <div style={{ width: 7, height: 7, borderRadius: 2, background: c }} />
+                    <span style={{ fontSize: 10, color: 'var(--dim)' }}>{l}</span>
                   </div>
                 ))}
               </div>
             </div>
 
-            {/* 24h Demand Chart */}
+            {/* Demand Chart */}
             <div className="demo-panel">
-              <div className="demo-panel-header">
+              <div className="demo-ph">
                 <h4>24-Hour Demand Forecast</h4>
-                <span style={{ fontSize: 10, color: 'var(--c-muted)', fontFamily: 'JetBrains Mono' }}>kW load</span>
+                <span style={{ fontSize: 10, color: 'var(--dim)', fontVariantNumeric: 'tabular-nums' }}>kW · Bengaluru Grid</span>
               </div>
-              <div className="chart-bars">
+              <div className="bars">
                 {data.map((v, i) => (
-                  <div
-                    key={i}
-                    className="chart-bar"
-                    style={{
-                      height: `${(v / maxV) * 100}%`,
-                      background: barColor(v, optimized),
-                      opacity: 0.85,
-                    }}
-                  />
+                  <div key={i} className="bar" style={{ height: `${(v/100)*100}%`, background: barColor(v, opt), opacity: 0.9 }} />
                 ))}
               </div>
-              <div className="chart-labels">
-                {HOURS.map(h => <span key={h} className="chart-label">{h}</span>)}
+              <div className="bar-labels">
+                {HLABELS.map(h => <span key={h} className="bar-label">{h}</span>)}
               </div>
-              <div style={{ marginTop: 10, fontSize: 11, color: optimized ? '#00D48A' : '#FF4757' }}>
-                {optimized
-                  ? '✓ Peak reduced from 96 kW → 72 kW by shifting demand to off-peak windows'
-                  : '⚠ Evening spike at 8–9 PM — transformer at 96% capacity'}
+              <div style={{ marginTop: 10, fontSize: 11.5, color: opt ? '#00E5A0' : '#FF4757', fontWeight: 600 }}>
+                {opt ? '✓ Peak shifted 8 PM → 11 PM · Saved 26 kW at feeder' : '⚠ 96 kW spike at 8–9 PM · Feeder at critical capacity'}
               </div>
             </div>
           </div>
 
-          {/* Right: Scheduling Recommendations */}
-          <div className="demo-panel">
-            <div className="demo-panel-header">
-              <h4>AI Scheduling Recommendations</h4>
+          {/* Scheduling panel */}
+          <div className="demo-panel" style={{ minHeight: 420 }}>
+            <div className="demo-ph">
+              <h4>AI Scheduling Engine</h4>
             </div>
-            <p style={{ fontSize: 12, color: 'var(--c-muted)', marginBottom: 16, lineHeight: 1.6 }}>
-              {optimized
-                ? 'Zone BTM_Z03 — AI found 3 optimal charging windows that reduce peak load while respecting ±3 hour user convenience window.'
-                : 'Zone BTM_Z03 — Currently operating unmanaged. 94% of users charging 7–10 PM.'}
+            <p style={{ fontSize: 12.5, color: 'var(--muted)', marginBottom: 16, lineHeight: 1.65 }}>
+              {opt
+                ? 'Zone BTM_Z03 — 3 optimal windows found. LP optimizer shifted sessions within ±3h user constraint.'
+                : 'Zone BTM_Z03 — Unmanaged. 94% of sessions clustering at 7–10 PM peak window.'}
             </p>
 
-            {optimized ? (
-              <>
-                {schedules.map((s, i) => (
-                  <div className="sched-card" key={i} id={`sched-${i}`}>
-                    <div className="sched-card-row">
-                      <span className="sched-time" style={{ color: s.col }}>{s.time}</span>
-                      <span className="sched-delta" style={{ color: s.col }}>{s.delta}</span>
-                    </div>
-                    <div className="sched-bar-wrap">
-                      <div className="sched-bar" style={{ width: `${s.pct}%`, background: s.col }} />
-                    </div>
-                    <div style={{ fontSize: 10, color: 'var(--c-muted)', marginTop: 6 }}>
-                      {s.pct}% grid headroom · Incentive eligible
-                    </div>
-                  </div>
-                ))}
-                <div style={{
-                  marginTop: 16, padding: '12px 16px', borderRadius: 10,
-                  background: 'rgba(0,212,138,0.06)', border: '1px solid rgba(0,212,138,0.15)',
-                  fontSize: 12, color: '#00D48A', lineHeight: 1.6,
-                }}>
-                  Grid Load Balanced · Peak reduced by 23% · All sessions conserved
+            {opt ? schedules.map((s, i) => (
+              <div className="sched-row" key={i} id={`sched-${i}`}>
+                <div className="sched-top">
+                  <span className="sched-time" style={{ color: s.col }}>{s.time}</span>
+                  <span className="sched-delta" style={{ color: s.col }}>{s.delta}</span>
                 </div>
-              </>
-            ) : (
-              <div style={{
-                padding: '40px 0', textAlign: 'center',
-                color: 'var(--c-muted)', fontSize: 13,
-              }}>
-                <div style={{ fontSize: 28, marginBottom: 10 }}>⚡</div>
-                Click toggle above to see AI recommendations
+                <div className="sched-bar-bg">
+                  <motion.div className="sched-bar"
+                    animate={{ width: `${s.pct}%` }}
+                    transition={{ duration: 1.1, ease: 'easeInOut' }}
+                    style={{ background: s.col }}
+                  />
+                </div>
+                <div style={{ fontSize: 10, color: 'var(--dim)', marginTop: 5 }}>
+                  {s.pct}% headroom · Incentive eligible
+                </div>
+              </div>
+            )) : (
+              <div style={{ padding: '44px 0', textAlign: 'center', color: 'var(--dim)', fontSize: 13 }}>
+                <div style={{ fontSize: 32, marginBottom: 12 }}>⚡</div>
+                Enable AI mode to see scheduling recommendations
               </div>
             )}
 
-            {/* Feeder capacity bar */}
+            {/* Feeder bar */}
             <div style={{ marginTop: 24 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--c-muted)', marginBottom: 6 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--dim)', marginBottom: 7 }}>
                 <span>Feeder Capacity Used</span>
-                <span style={{ color: optimized ? '#00D48A' : '#FF4757', fontWeight: 700 }}>
-                  {optimized ? '61%' : '96%'}
-                </span>
+                <span style={{ fontWeight: 700, color: opt ? '#00E5A0' : '#FF4757' }}>{opt ? '61%' : '96%'}</span>
               </div>
-              <div style={{ height: 6, background: 'rgba(255,255,255,0.06)', borderRadius: 3 }}>
+              <div style={{ height: 5, background: 'rgba(255,255,255,0.05)', borderRadius: 3 }}>
                 <motion.div
-                  animate={{ width: optimized ? '61%' : '96%' }}
-                  transition={{ duration: 1.2, ease: 'easeInOut' }}
+                  animate={{ width: opt ? '61%' : '96%' }}
+                  transition={{ duration: 1.3, ease: 'easeInOut' }}
                   style={{
-                    height: 6, borderRadius: 3,
-                    background: optimized
-                      ? 'linear-gradient(90deg,#00D48A,#3B8EFF)'
+                    height: 5, borderRadius: 3,
+                    background: opt
+                      ? 'linear-gradient(90deg,#00E5A0,#00C8FF)'
                       : 'linear-gradient(90deg,#FF6B35,#FF4757)',
                   }}
                 />
               </div>
-              <div style={{ fontSize: 10, color: 'var(--c-muted)', marginTop: 5 }}>
-                Safe threshold: &lt;80% · Feeder rated 120 kW
+              <div style={{ fontSize: 10, color: 'var(--dim)', marginTop: 6 }}>
+                Safe zone: &lt;80% · Rated capacity 120 kW
               </div>
             </div>
+
+            {opt && (
+              <motion.div
+                initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
+                style={{
+                  marginTop: 18, padding: '12px 14px', borderRadius: 9,
+                  background: 'rgba(0,229,160,0.06)', border: '1px solid rgba(0,229,160,0.15)',
+                  fontSize: 12, color: '#00E5A0', lineHeight: 1.6,
+                }}
+              >
+                Grid Load Balanced · Sessions conserved · 0 user disruption
+              </motion.div>
+            )}
           </div>
         </div>
       </div>
