@@ -1,238 +1,434 @@
-import React, { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Battery, Zap, Clock, TrendingDown, MapPin, Activity } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react'
 
-const App = () => {
-  const [scene, setScene] = useState(0); // 0 to 3
+/* ── Inline SVG Icons (no external deps) ─────────────────────────── */
+const Icon = {
+  Activity:   () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>,
+  Zap:        () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>,
+  Brain:      () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96-.46 2.5 2.5 0 0 1-1.07-4.7 3 3 0 0 1 .95-5.58 2.5 2.5 0 0 1 1.58-5.26Z"/><path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96-.46 2.5 2.5 0 0 0 1.07-4.7 3 3 0 0 0-.95-5.58 2.5 2.5 0 0 0-1.58-5.26Z"/></svg>,
+  Map:        () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="3 6 9 3 15 6 21 3 21 18 15 21 9 18 3 21"/><line x1="9" x2="9" y1="3" y2="18"/><line x1="15" x2="15" y1="6" y2="21"/></svg>,
+  Shield:     () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>,
+  TrendDown:  () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 18 13.5 8.5 8.5 13.5 1 6"/><polyline points="17 18 23 18 23 12"/></svg>,
+  Clock:      () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>,
+  ChevronRight:()=><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>,
+  ExternalLink:()=><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" x2="21" y1="14" y2="3"/></svg>,
+  Layers:     () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>,
+  BarChart:   () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" x2="18" y1="20" y2="10"/><line x1="12" x2="12" y1="20" y2="4"/><line x1="6" x2="6" y1="20" y2="14"/></svg>,
+  FileText:   () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" x2="8" y1="13" y2="13"/><line x1="16" x2="8" y1="17" y2="17"/><line x1="10" x2="8" y1="9" y2="9"/></svg>,
+}
+
+/* ── Animated Counter ─────────────────────────────────────────────── */
+function AnimatedCounter({ target, suffix = '' }: { target: number; suffix?: string }) {
+  const [count, setCount] = useState(0)
+  const ref = useRef<HTMLSpanElement>(null)
 
   useEffect(() => {
-    // Sequence the animation
-    const timer1 = setTimeout(() => setScene(1), 2000); // Scene 2 at 2s
-    const timer2 = setTimeout(() => setScene(2), 4000); // Scene 3 at 4s
-    const timer3 = setTimeout(() => setScene(3), 7000); // Scene 4 at 7s
-    const timer4 = setTimeout(() => setScene(0), 12000); // Loop back
+    const observer = new IntersectionObserver(([entry]) => {
+      if (!entry.isIntersecting) return
+      observer.disconnect()
+      let start = 0
+      const step = () => {
+        start += target / 60
+        if (start >= target) { setCount(target); return }
+        setCount(Math.floor(start))
+        requestAnimationFrame(step)
+      }
+      requestAnimationFrame(step)
+    }, { threshold: 0.3 })
+    if (ref.current) observer.observe(ref.current)
+    return () => observer.disconnect()
+  }, [target])
 
-    return () => {
-      clearTimeout(timer1);
-      clearTimeout(timer2);
-      clearTimeout(timer3);
-      clearTimeout(timer4);
-    };
-  }, [scene]);
+  return <span ref={ref}>{count}{suffix}</span>
+}
+
+/* ── Floating Stat Card (video overlay) ──────────────────────────── */
+function StatCard({
+  label, value, unit, color, delay, style
+}: {
+  label: string; value: string; unit?: string; color: string; delay: string; style?: React.CSSProperties
+}) {
+  return (
+    <div className={`ui-card ${color} anim-up`} style={{ animationDelay: delay, ...style }}>
+      <div className="ui-card-label" style={{
+        color: color === 'green' ? '#34d399' : color === 'red' ? '#f87171' : '#22d3ee'
+      }}>{label}</div>
+      <div className="ui-card-value" style={{
+        color: color === 'green' ? '#34d399' : color === 'red' ? '#f87171' : '#22d3ee'
+      }}>{value}</div>
+      {unit && <div className="ui-card-sub">{unit}</div>}
+    </div>
+  )
+}
+
+/* ══════════════════════════════════════════════════════════════════ */
+export default function App() {
+  const videoRef = useRef<HTMLVideoElement>(null)
+  const [videoReady, setVideoReady] = useState(false)
+
+  // Ensure video plays muted & looped
+  useEffect(() => {
+    const vid = videoRef.current
+    if (!vid) return
+    vid.muted = true
+    vid.playsInline = true
+    vid.loop = true
+    vid.play().catch(() => {})
+  }, [])
 
   return (
-    <div className="min-h-screen bg-[#0A0A0A] text-white font-sans overflow-hidden">
-      {/* Navigation */}
-      <nav className="absolute top-0 w-full p-6 flex justify-between items-center z-50">
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-400 to-cyan-500 flex items-center justify-center">
-            <Activity className="w-5 h-5 text-white" />
-          </div>
-          <span className="font-bold text-xl tracking-tight">GridSense AI</span>
+    <>
+      {/* ── Navbar ──────────────────────────────────────────────── */}
+      <nav className="navbar" id="navbar">
+        <a className="nav-logo" href="#" aria-label="GridSense AI Home">
+          <div className="nav-logo-icon">GS</div>
+          <span className="nav-logo-text">Grid<span>Sense</span> AI</span>
+        </a>
+
+        <ul className="nav-links">
+          <li><a href="#features" id="nav-features">Platform</a></li>
+          <li><a href="#architecture" id="nav-arch">Architecture</a></li>
+          <li><a href="#metrics" id="nav-metrics">Metrics</a></li>
+          <li><a href="#roadmap" id="nav-roadmap">Roadmap</a></li>
+        </ul>
+
+        <div className="nav-cta">
+          <a className="btn-ghost" href="#architecture" id="nav-docs">Read PRD</a>
+          <a className="btn-primary" href="#cta" id="nav-demo">
+            Request Pilot
+            <span style={{ width: 14, height: 14 }}><Icon.ChevronRight /></span>
+          </a>
         </div>
-        <div className="flex gap-6 text-sm font-medium text-slate-400">
-          <a href="#" className="hover:text-white transition-colors">Platform</a>
-          <a href="#" className="hover:text-white transition-colors">Solutions</a>
-          <a href="#" className="hover:text-white transition-colors">Case Studies</a>
-        </div>
-        <button className="px-5 py-2 bg-white/10 hover:bg-white/20 rounded-full text-sm font-medium backdrop-blur-md transition-all">
-          Request Demo
-        </button>
       </nav>
 
-      {/* Hero Section */}
-      <div className="relative pt-32 pb-20 lg:pt-48 lg:pb-32 max-w-7xl mx-auto px-6 grid lg:grid-cols-2 gap-16 items-center min-h-screen">
-        
-        {/* Left Copy */}
-        <div className="relative z-20">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8 }}
-          >
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-semibold uppercase tracking-wider mb-6">
-              <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-              </span>
-              BESCOM Ready
-            </div>
-            <h1 className="text-5xl lg:text-7xl font-bold tracking-tight leading-[1.1] mb-6">
-              Optimize Grid Load.<br/>
-              <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-cyan-400">Zero Infrastructure.</span>
-            </h1>
-            <p className="text-lg text-slate-400 mb-8 max-w-lg leading-relaxed">
-              GridSense AI predicts EV charging demand, recommends optimal scheduling, and prevents grid overload without requiring hardware modifications.
-            </p>
-            
-            <div className="flex gap-4">
-              <button className="px-8 py-3.5 bg-white text-black font-semibold rounded-full hover:bg-slate-200 transition-colors">
-                Start Pilot
-              </button>
-              <button className="px-8 py-3.5 bg-white/5 border border-white/10 hover:bg-white/10 font-semibold rounded-full transition-colors flex items-center gap-2">
-                Read PRD
-              </button>
-            </div>
-          </motion.div>
+      {/* ── Hero: Full-Screen Video ──────────────────────────────── */}
+      <section className="hero-video-wrapper" id="hero" aria-label="GridSense AI Hero">
+        {/* The video element — muted, looped, zoomed via CSS */}
+        <video
+          ref={videoRef}
+          id="hero-video"
+          src="/hero.mp4"
+          autoPlay
+          muted
+          loop
+          playsInline
+          onCanPlay={() => setVideoReady(true)}
+          aria-hidden="true"
+          style={{ opacity: videoReady ? 1 : 0, transition: 'opacity 0.8s ease' }}
+        />
 
-          <motion.div 
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.5, duration: 1 }}
-            className="mt-16 grid grid-cols-3 gap-6 pt-8 border-t border-white/10"
-          >
-            <div>
-              <div className="text-3xl font-bold text-white mb-1">20%</div>
-              <div className="text-sm text-slate-500">Peak Load Reduction</div>
-            </div>
-            <div>
-              <div className="text-3xl font-bold text-white mb-1">85%</div>
-              <div className="text-sm text-slate-500">Forecast Accuracy</div>
-            </div>
-            <div>
-              <div className="text-3xl font-bold text-white mb-1">0</div>
-              <div className="text-sm text-slate-500">Hardware Changes</div>
-            </div>
-          </motion.div>
+        {/* Dark gradient masks: cinematic vignette + logo blocker */}
+        <div className="hero-video-mask" aria-hidden="true" />
+
+        {/* Floating stat cards — right side */}
+        <div className="video-overlay-cards" id="video-stats" aria-hidden="true">
+          <StatCard label="Grid Load" value="98%" color="red" delay="0.6s" />
+          <StatCard label="AI Optimized" value="−23%" unit="peak kW saved" color="green" delay="0.8s" />
+          <StatCard label="Forecast MAPE" value="≤15%" unit="±confidence" color="cyan" delay="1.0s" />
         </div>
 
-        {/* Right Animation Container */}
-        <div className="relative w-full aspect-square md:aspect-[4/3] lg:aspect-square bg-slate-900/50 rounded-3xl border border-white/10 overflow-hidden shadow-2xl flex items-center justify-center">
-          
-          {/* Grid Background */}
-          <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 mix-blend-overlay"></div>
-          <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.03)_1px,transparent_1px)] bg-[size:40px_40px] [mask-image:radial-gradient(ellipse_50%_50%_at_50%_50%,black_40%,transparent_100%)]"></div>
+        {/* Hero copy — bottom left */}
+        <div className="hero-content" id="hero-content">
+          <div className="live-badge anim-up" id="hero-badge">
+            <span className="live-dot" />
+            BESCOM Ready · Bengaluru 2026
+          </div>
 
-          {/* Isometric Animation Base */}
-          <div className="relative w-[300px] h-[300px] lg:w-[400px] lg:h-[400px]">
-            
-            {/* The Station Base */}
-            <motion.div 
-              className="absolute bottom-10 left-1/2 -translate-x-1/2 w-64 h-32 bg-slate-800 rounded-[2rem] transform -rotate-x-60 rotate-z-45 border-4 border-slate-700 shadow-2xl"
-              style={{ transformStyle: 'preserve-3d', transform: 'rotateX(60deg) rotateZ(-45deg)' }}
-            >
-              {/* Heatmap overlay on the floor */}
-              <motion.div 
-                className="absolute inset-0 rounded-[2rem] blur-xl"
-                animate={{
-                  backgroundColor: scene < 2 ? 'rgba(239, 68, 68, 0.4)' : scene === 2 ? 'rgba(234, 179, 8, 0.3)' : 'rgba(16, 185, 129, 0.2)'
-                }}
-                transition={{ duration: 1.5 }}
-              />
-            </motion.div>
+          <h1 className="hero-title anim-up delay-100" id="hero-title">
+            AI-Powered EV Grid<br />
+            <span className="gradient-text">Optimization.</span>
+          </h1>
 
-            {/* Charging Stations */}
-            {[0, 1, 2].map((i) => (
-              <motion.div 
-                key={i}
-                className="absolute w-8 h-20 bg-slate-700 rounded-lg flex flex-col items-center justify-start pt-2 shadow-xl"
-                style={{
-                  bottom: `${120 + i * 30}px`,
-                  left: `${100 + i * 60}px`,
-                  zIndex: 10 - i
-                }}
-              >
-                <motion.div 
-                  className="w-4 h-4 rounded-full shadow-[0_0_15px_rgba(0,0,0,0.5)]"
-                  animate={{
-                    backgroundColor: scene < 2 ? '#ef4444' : scene === 2 ? '#eab308' : '#10b981',
-                    boxShadow: scene < 2 
-                      ? '0 0 20px #ef4444' 
-                      : scene === 2 ? '0 0 15px #eab308' : '0 0 20px #10b981'
-                  }}
-                  transition={{ duration: 1.5 }}
-                />
-              </motion.div>
-            ))}
+          <p className="hero-subtitle anim-up delay-200" id="hero-subtitle">
+            GridSense AI predicts EV charging demand, recommends optimal scheduling,
+            and prevents grid overload — without touching a single wire.
+          </p>
 
-            {/* Character (Abstract Representation) */}
-            <motion.div 
-              className="absolute w-6 h-12 bg-white rounded-full shadow-lg flex items-center justify-center"
-              initial={{ bottom: '100px', left: '140px' }}
-              animate={
-                scene === 0 ? { bottom: '100px', left: '140px' } :
-                scene === 1 ? { bottom: '100px', left: '140px' } :
-                scene === 2 ? { bottom: '140px', left: '180px' } :
-                { bottom: '180px', left: '220px' }
-              }
-              transition={{ duration: 1.5, ease: "easeInOut" }}
-              style={{ zIndex: 20 }}
-            >
-              {/* Phone screen glow */}
-              <AnimatePresence>
-                {(scene === 1 || scene === 2) && (
-                  <motion.div 
-                    initial={{ opacity: 0, scale: 0 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    exit={{ opacity: 0 }}
-                    className="absolute -right-2 top-2 w-3 h-4 bg-cyan-400 rounded-sm shadow-[0_0_15px_#22d3ee]"
-                  />
-                )}
-              </AnimatePresence>
-            </motion.div>
+          <div className="hero-actions anim-up delay-300">
+            <a className="btn-primary" href="#features" id="hero-cta-primary">
+              Explore Platform
+              <span style={{ width: 14, height: 14 }}><Icon.ChevronRight /></span>
+            </a>
+            <a className="btn-ghost" href="#cta" id="hero-cta-secondary">
+              <span style={{ width: 14, height: 14 }}><Icon.ExternalLink /></span>
+              Request Pilot
+            </a>
+          </div>
 
-            {/* UI Overlays */}
-            <AnimatePresence mode="wait">
-              {scene === 0 && (
-                <motion.div 
-                  key="scene0"
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -10 }}
-                  className="absolute top-10 right-10 bg-red-500/10 border border-red-500/30 backdrop-blur-md rounded-xl p-4 flex items-center gap-3"
-                >
-                  <TrendingDown className="w-5 h-5 text-red-400" />
-                  <div>
-                    <div className="text-xs text-red-300 font-medium">Grid Status</div>
-                    <div className="text-sm text-red-400 font-bold">Peak Load (98%)</div>
-                  </div>
-                </motion.div>
-              )}
-
-              {scene === 1 && (
-                <motion.div 
-                  key="scene1"
-                  initial={{ opacity: 0, scale: 0.9 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.9 }}
-                  className="absolute top-1/4 left-1/2 -translate-x-1/2 bg-slate-800/90 border border-cyan-500/50 shadow-[0_0_30px_rgba(6,182,212,0.3)] backdrop-blur-md rounded-xl p-4 flex items-center gap-4 z-50 w-64"
-                >
-                  <div className="w-10 h-10 rounded-full bg-cyan-500/20 flex items-center justify-center">
-                    <Zap className="w-5 h-5 text-cyan-400" />
-                  </div>
-                  <div>
-                    <div className="text-xs text-cyan-300 font-medium uppercase tracking-wider mb-0.5">AI Intervention</div>
-                    <div className="text-sm text-white font-semibold">Recommendation Found</div>
-                  </div>
-                </motion.div>
-              )}
-
-              {scene >= 3 && (
-                <motion.div 
-                  key="scene3"
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -10 }}
-                  className="absolute top-10 right-10 bg-emerald-500/10 border border-emerald-500/30 backdrop-blur-md rounded-xl p-4 flex flex-col gap-2"
-                >
-                  <div className="flex items-center gap-3">
-                    <Clock className="w-5 h-5 text-emerald-400" />
-                    <div>
-                      <div className="text-xs text-emerald-300 font-medium">Shifted Schedule</div>
-                      <div className="text-sm text-emerald-400 font-bold">10:30 PM Selected</div>
-                    </div>
-                  </div>
-                  <div className="h-px w-full bg-emerald-500/20 my-1" />
-                  <div className="text-xs text-emerald-200">Grid Load Balanced</div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-
+          <div className="stats-strip anim-up delay-400">
+            <div className="stat-item" id="stat-accuracy">
+              <div className="stat-num">85%+</div>
+              <div className="stat-label">Forecast Accuracy</div>
+            </div>
+            <div className="stat-item" id="stat-peak">
+              <div className="stat-num">≥20%</div>
+              <div className="stat-label">Peak Load Reduction</div>
+            </div>
+            <div className="stat-item" id="stat-hw">
+              <div className="stat-num">0</div>
+              <div className="stat-label">Hardware Changes</div>
+            </div>
+            <div className="stat-item" id="stat-zones">
+              <div className="stat-num">198</div>
+              <div className="stat-label">BBMP Wards Supported</div>
+            </div>
           </div>
         </div>
-      </div>
-    </div>
-  );
-};
+      </section>
 
-export default App;
+      {/* ── Problem Statement ────────────────────────────────────── */}
+      <section id="problem" aria-labelledby="problem-heading">
+        <div className="section">
+          <span className="section-label">The Problem</span>
+          <h2 className="section-title" id="problem-heading">
+            Bengaluru's Grid Can't Keep Up<br />With EV Growth
+          </h2>
+          <p className="section-body">
+            Evening charging spikes cause localized transformer stress, unmanaged demand
+            wastes capacity, and infrastructure decisions lack data. GridSense AI fixes
+            all of this without modifying a single substation.
+          </p>
+
+          <div className="problem-grid" style={{ marginTop: 48 }}>
+            {[
+              { icon: '⚡', cls: 'red',    title: 'Peak Hour Overload',      body: 'Evening charging spikes (6–10 PM) in residential zones cause localized grid overload and transformer stress.' },
+              { icon: '📊', cls: 'orange', title: 'No Demand Forecasting',   body: 'Unmanaged EV charging leads to reactive grid management and poor resource allocation for operators.' },
+              { icon: '📍', cls: 'yellow', title: 'Blind Infrastructure',    body: 'Infrastructure decisions are not data-driven, resulting in over or under-provisioning of charging stations.' },
+              { icon: '📱', cls: 'blue',   title: 'No User Guidance',        body: 'EV users receive no real-time load-aware guidance, missing the opportunity to shift demand to off-peak windows.' },
+            ].map((item, i) => (
+              <div className="problem-cell" key={i} id={`problem-cell-${i}`}>
+                <div className={`problem-icon ${item.cls}`}>{item.icon}</div>
+                <h3>{item.title}</h3>
+                <p>{item.body}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── Features / Modules ──────────────────────────────────── */}
+      <section id="features" aria-labelledby="features-heading">
+        <div className="section">
+          <span className="section-label">Platform Modules</span>
+          <h2 className="section-title" id="features-heading">
+            Two Integrated AI Modules.<br />One Unified Platform.
+          </h2>
+          <p className="section-body">
+            Module A handles demand prediction and smart scheduling. Module B handles
+            infrastructure location intelligence. Both work without modifying existing
+            BESCOM systems.
+          </p>
+
+          <div className="features-grid">
+            {[
+              {
+                num: '01',
+                icon: <Icon.BarChart />,
+                title: 'Demand Forecasting',
+                body: 'Hybrid Prophet + LSTM model predicts EV charging load at 1-hour granularity across all 198 BBMP ward zones, 24 hours ahead.',
+                tag: 'Module A · FR-A1',
+              },
+              {
+                num: '02',
+                icon: <Icon.Clock />,
+                title: 'Smart Scheduling',
+                body: 'Linear programming optimizer recommends 2–3 optimal charging windows per zone, reducing peak load by ≥20% vs. unmanaged baseline.',
+                tag: 'Module A · FR-A2',
+              },
+              {
+                num: '03',
+                icon: <Icon.Map />,
+                title: 'Infrastructure Planner',
+                body: 'K-Means + DBSCAN clustering identifies high-demand zones and ranks the top-3 candidate locations for new charging stations with explainable rationale.',
+                tag: 'Module B · FR-B1',
+              },
+              {
+                num: '04',
+                icon: <Icon.Brain />,
+                title: 'AI-Powered Insights',
+                body: 'All model outputs include plain-language rationale captions so non-technical IAS planners can act on recommendations without data science expertise.',
+                tag: 'Explainability',
+              },
+              {
+                num: '05',
+                icon: <Icon.Layers />,
+                title: 'Interactive Dashboard',
+                body: 'Operator-grade React dashboard with Leaflet choropleth maps, Recharts forecast charts, zone drill-down cards, and one-click PDF report export.',
+                tag: 'Frontend · T5',
+              },
+              {
+                num: '06',
+                icon: <Icon.Shield />,
+                title: 'Zero Infrastructure Modification',
+                body: 'Operates as a pure decision-support overlay — no SCADA integration, no hardware changes, no PII. Fully containerized and deployable on any cloud or local VM.',
+                tag: 'Non-Invasive · T6',
+              },
+            ].map((f, i) => (
+              <div className="feature-card" key={i} id={`feature-card-${i}`}>
+                <div className="feature-number">{f.num}</div>
+                <div className="feature-icon-wrap">{f.icon}</div>
+                <h3>{f.title}</h3>
+                <p>{f.body}</p>
+                <span className="feature-tag">{f.tag}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── Metrics ─────────────────────────────────────────────── */}
+      <section id="metrics" aria-labelledby="metrics-heading">
+        <div className="section">
+          <span className="section-label">Success Metrics</span>
+          <h2 className="section-title" id="metrics-heading">
+            Measurable Outcomes.<br />Every Single Time.
+          </h2>
+          <p className="section-body">
+            All targets are verifiable through backtesting, simulation, and expert
+            validation — not projections.
+          </p>
+
+          <div className="metrics-row">
+            {[
+              { num: 15,  suffix: '%',  label: 'Max MAPE', sub: 'Demand Forecast Error' },
+              { num: 20,  suffix: '%+', label: 'Peak Reduction', sub: 'vs. Unmanaged Baseline' },
+              { num: 90,  suffix: '%',  label: 'Peak Hour Detection', sub: 'Scheduling Effectiveness' },
+              { num: 500, suffix: 'ms', label: 'Forecast Latency', sub: 'Per Zone, Real-Time' },
+              { num: 99,  suffix: '%+', label: 'Demo Uptime', sub: 'During Evaluation Window' },
+            ].map((m, i) => (
+              <div className="metric-cell" key={i} id={`metric-${i}`}>
+                <div className="metric-num">
+                  <AnimatedCounter target={m.num} suffix={m.suffix} />
+                </div>
+                <div className="metric-label">{m.label}</div>
+                <div className="metric-sub">{m.sub}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── Architecture ─────────────────────────────────────────── */}
+      <section id="architecture" aria-labelledby="arch-heading">
+        <div className="section">
+          <span className="section-label">Technical Architecture</span>
+          <h2 className="section-title" id="arch-heading">
+            Modular. API-First.<br />Containerized.
+          </h2>
+          <p className="section-body">
+            Each layer is independently deployable and communicates via REST APIs.
+            Zero external database required in Phase 1.
+          </p>
+
+          <div className="arch-grid">
+            {[
+              {
+                tag: 'Layer 01 — Data',
+                title: 'Synthetic + Public Data Pipeline',
+                desc: 'Timestamped charging event logs, BBMP ward GeoJSON, SMEV EV adoption rates, Open-Meteo weather, and proxy transformer capacity — all in-memory.',
+                tech: ['Python', 'Pandas', 'GeoPandas', 'NumPy', 'Open-Meteo'],
+              },
+              {
+                tag: 'Layer 02 — ML Pipeline',
+                title: 'Hybrid Forecasting & Clustering',
+                desc: 'Facebook Prophet handles seasonality + trend decomposition. LSTM captures non-linear short-term dependencies. K-Means + DBSCAN for spatial hotspot identification.',
+                tech: ['Prophet', 'PyTorch', 'scikit-learn', 'DBSCAN', 'K-Means'],
+              },
+              {
+                tag: 'Layer 03 — Optimization',
+                title: 'LP Scheduler & Site Scorer',
+                desc: 'PuLP linear program minimizes peak deviation subject to feeder capacity constraints. Multi-criteria weighted scoring (demand 35%, grid 30%, accessibility 20%, land 15%).',
+                tech: ['PuLP', 'OR-Tools', 'FastAPI', 'Pydantic', 'Uvicorn'],
+              },
+              {
+                tag: 'Layer 04 — Frontend',
+                title: 'Operator Dashboard',
+                desc: 'React 18 + Vite SPA. Leaflet choropleth maps, Recharts/D3 forecast charts, Zustand state, React Query caching, jsPDF export. No login required in demo mode.',
+                tech: ['React 18', 'Vite', 'Leaflet', 'Recharts', 'Tailwind'],
+              },
+            ].map((l, i) => (
+              <div className="arch-layer" key={i} id={`arch-layer-${i}`}>
+                <div className="arch-layer-tag">{l.tag}</div>
+                <h4>{l.title}</h4>
+                <p>{l.desc}</p>
+                <div className="arch-tech-pills">
+                  {l.tech.map(t => <span className="tech-pill" key={t}>{t}</span>)}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── Roadmap ──────────────────────────────────────────────── */}
+      <section id="roadmap" aria-labelledby="roadmap-heading">
+        <div className="section">
+          <span className="section-label">Implementation Roadmap</span>
+          <h2 className="section-title" id="roadmap-heading">
+            5-Week Sprint to<br />Production Demo.
+          </h2>
+          <p className="section-body">
+            Each phase has a concrete, verifiable deliverable. The system is demo-ready
+            by Week 5 with pre-computed cached forecasts for zero-latency jury presentation.
+          </p>
+
+          <div className="roadmap-list" id="roadmap-list">
+            {[
+              { week: 'Week 1', badge: 'data', badgeLabel: 'Data', title: 'Data Generation & EDA', body: 'Synthetic Bengaluru EV dataset across 198 BBMP wards, zone grid generation, feature engineering pipeline.' },
+              { week: 'Week 2', badge: 'ml',   badgeLabel: 'ML',   title: 'Demand Forecasting Model', body: 'Hybrid Prophet + LSTM training, 80/10/10 train/val/test split, MAPE backtesting on 30-day held-out window.' },
+              { week: 'Wk 2–3', badge: 'ml',  badgeLabel: 'Optim',title: 'Scheduling Optimizer', body: 'LP/heuristic scheduler with feeder capacity constraints, load shift simulation vs. unmanaged baseline.' },
+              { week: 'Week 3', badge: 'ml',   badgeLabel: 'Infra', title: 'Infrastructure Location Engine', body: 'K-Means zone clustering, DBSCAN hotspot detection, multi-criteria site scoring, ranked recommendation output.' },
+              { week: 'Week 4', badge: 'ui',   badgeLabel: 'UI',   title: 'Dashboard & Frontend', body: 'React dashboard with Leaflet heatmaps, Recharts forecasts, zone drill-down, PDF export for IAS stakeholders.' },
+              { week: 'Week 5', badge: 'ops',  badgeLabel: 'Demo', title: 'Integration & Demo Prep', body: 'End-to-end demo, DEMO=true cached forecast mode, Docker containerization, jury presentation deck.' },
+            ].map((r, i) => (
+              <div className="roadmap-item" key={i} id={`roadmap-${i}`}>
+                <div className="roadmap-week">{r.week}</div>
+                <div className="roadmap-line">
+                  <div className="roadmap-dot" />
+                  {i < 5 && <div className="roadmap-connector" />}
+                </div>
+                <div className="roadmap-body">
+                  <h4>{r.title}</h4>
+                  <p>{r.body}</p>
+                  <span className={`roadmap-badge ${r.badge}`}>{r.badgeLabel}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── CTA Banner ───────────────────────────────────────────── */}
+      <div className="cta-banner" id="cta">
+        <div>
+          <h2>Ready to Optimize Bengaluru's Grid?</h2>
+          <p>GridSense AI is fully containerized, demo-ready, and deployable without modifying any existing BESCOM infrastructure.</p>
+        </div>
+        <div className="cta-actions">
+          <a className="btn-primary" href="#hero" id="cta-pilot">
+            Start Pilot
+            <span style={{ width: 14, height: 14 }}><Icon.ChevronRight /></span>
+          </a>
+          <a className="btn-ghost" href="#architecture" id="cta-docs">
+            <span style={{ width: 14, height: 14 }}><Icon.FileText /></span>
+            Read Full TRD
+          </a>
+        </div>
+      </div>
+
+      {/* ── Footer ───────────────────────────────────────────────── */}
+      <footer id="footer">
+        <div>
+          <strong style={{ color: '#fff' }}>GridSense AI</strong> — BESCOM EV Charging Optimization
+          <br />
+          <span style={{ fontSize: 12 }}>v1.0 · April 2026 · BESCOM EV Track · Confidential</span>
+        </div>
+        <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
+          <a href="#features" id="footer-platform">Platform</a>
+          <a href="#architecture" id="footer-arch">Architecture</a>
+          <a href="#metrics" id="footer-metrics">Metrics</a>
+          <a href="#roadmap" id="footer-roadmap">Roadmap</a>
+        </div>
+      </footer>
+    </>
+  )
+}
