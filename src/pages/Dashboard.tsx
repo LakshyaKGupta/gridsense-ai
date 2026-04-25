@@ -63,7 +63,7 @@ function KPICard({ title, value, hint, trend, upIsGood = false }: any) {
   
   return (
     <div className="relative overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/50 p-5 backdrop-blur-md transition-all hover:border-slate-700 hover:bg-slate-800/50 group">
-      <div className="absolute -right-10 -top-10 h-32 w-32 rounded-full bg-cyan-500/5 blur-[50px] transition-all group-hover:bg-cyan-500/10" />
+      <div className="absolute -right-10 -top-10 h-32 w-32 rounded-full bg-cyan-500/5 blur-[40px]" />
       <p className="text-sm font-medium text-slate-400">{title}</p>
       <div className="mt-2 flex items-end gap-3">
         <h3 className="text-3xl font-bold tracking-tight text-white">{value}</h3>
@@ -284,6 +284,27 @@ export default function Dashboard() {
                 >
                   Settings
                 </button>
+                <div className="h-px bg-slate-800 my-1" />
+                <button 
+                  onClick={() => alert("Switch City feature coming soon! Currently locked to Bengaluru for Demo.")}
+                  className="w-full text-left px-4 py-2 text-sm text-slate-300 hover:bg-slate-800 hover:text-white transition-colors"
+                >
+                  Switch City
+                </button>
+                <button 
+                  onClick={() => alert("Demo Mode is currently active.")}
+                  className="w-full text-left px-4 py-2 text-sm text-slate-300 hover:bg-slate-800 hover:text-white transition-colors flex justify-between items-center"
+                >
+                  Demo Mode
+                  <span className="h-2 w-2 rounded-full bg-emerald-500"></span>
+                </button>
+                <button 
+                  onClick={() => alert("Data source switching requires admin privileges.")}
+                  className="w-full text-left px-4 py-2 text-sm text-slate-300 hover:bg-slate-800 hover:text-white transition-colors"
+                >
+                  Data Source: Simulated
+                </button>
+                <div className="h-px bg-slate-800 my-1" />
                 <button 
                   onClick={logout} 
                   className="w-full text-left px-4 py-2 text-sm text-rose-400 hover:bg-rose-500/10 transition-colors flex items-center justify-between"
@@ -354,6 +375,21 @@ export default function Dashboard() {
               </div>
             </div>
             
+            <div className="absolute top-4 right-4 z-10">
+              <div className="rounded-lg bg-[#0B0F14]/90 backdrop-blur-md border border-slate-700/50 p-3 shadow-lg flex flex-col gap-2">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-700/50 pb-1 mb-1">Load Status</span>
+                <div className="flex items-center gap-2 text-xs font-medium text-slate-300">
+                  <span className="h-2 w-2 rounded-full bg-emerald-500"></span> Low Load
+                </div>
+                <div className="flex items-center gap-2 text-xs font-medium text-slate-300">
+                  <span className="h-2 w-2 rounded-full bg-amber-500"></span> Moderate
+                </div>
+                <div className="flex items-center gap-2 text-xs font-medium text-slate-300">
+                  <span className="h-2 w-2 rounded-full bg-rose-500"></span> High Load
+                </div>
+              </div>
+            </div>
+            
             <div className="flex-1 bg-black/50 w-full relative">
               <Map
                 initialViewState={{
@@ -395,8 +431,8 @@ export default function Dashboard() {
                           />
                         )}
                         <div 
-                          className="h-4 w-4 rounded-full border-2 border-white shadow-[0_0_15px_rgba(0,0,0,0.5)]"
-                          style={{ backgroundColor: color, boxShadow: `0 0 20px ${color}` }}
+                          className="h-4 w-4 rounded-full border-2 border-[#0B0F14] shadow-[0_2px_4px_rgba(0,0,0,0.5)]"
+                          style={{ backgroundColor: color }}
                         />
                       </div>
                     </Marker>
@@ -423,32 +459,44 @@ export default function Dashboard() {
                           className={`h-4 w-4 rounded-md border-2 border-[#0B0F14] shadow-sm transition-transform ${st.is_best_option ? 'animate-bounce scale-125' : ''}`}
                           style={{ backgroundColor: color }}
                         />
-                        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none w-56 z-50">
-                          <div className="bg-slate-900/95 backdrop-blur-md border border-slate-700 text-white rounded-lg shadow-2xl p-3 overflow-hidden">
-                            <div className="h-20 w-full mb-3 rounded-md bg-slate-800 bg-[url('https://images.unsplash.com/photo-1593941707882-a5bba14938cb?auto=format&fit=crop&w=300&q=80')] bg-cover bg-center" />
-                            <p className="font-bold text-sm mb-1 text-slate-100">{st.name}</p>
-                            <p className="text-[10px] text-slate-400 mb-2">{st.distance_km} km away from your location</p>
-                            <div className="space-y-1">
-                              <div className="flex justify-between text-xs">
-                                <span className="text-slate-400">Load</span>
-                                <span className="font-medium" style={{ color }}>{st.current_load}/{st.capacity} kW</span>
-                              </div>
-                              <div className="flex justify-between text-xs">
-                                <span className="text-slate-400">Wait Time</span>
-                                <span className="font-medium text-slate-200">{(st.queue_time || 0) > 0 ? `${st.queue_time} mins` : 'No Queue'}</span>
-                              </div>
-                              <div className="flex justify-between text-xs">
-                                <span className="text-slate-400">Peak Time</span>
-                                <span className="font-medium text-slate-200">{st.predicted_peak_time || '8:30 PM'}</span>
+                        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 invisible group-hover:visible opacity-0 group-hover:opacity-100 transition-all duration-200 w-64 z-50">
+                          <div className="bg-slate-900/95 backdrop-blur-xl border border-slate-700 text-white rounded-xl shadow-2xl overflow-hidden flex flex-col pointer-events-auto">
+                            <div className="h-24 w-full bg-slate-800 bg-[url('https://images.unsplash.com/photo-1593941707882-a5bba14938cb?auto=format&fit=crop&w=400&q=80')] bg-cover bg-center relative">
+                              <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-transparent to-transparent" />
+                              <div className="absolute bottom-2 left-3">
+                                <p className="font-bold text-base text-white drop-shadow-md">{st.name}</p>
+                                <p className="text-[10px] font-medium text-slate-200 drop-shadow-md">{st.distance_km} km away</p>
                               </div>
                             </div>
-                            <div className="mt-2 pt-2 border-t border-slate-700/50 text-center">
-                              <span className={`text-[10px] font-bold uppercase tracking-wider ${
-                                st.recommendation === 'Optimal' ? 'text-emerald-400' :
-                                st.recommendation === 'Avoid' ? 'text-rose-400' : 'text-amber-400'
-                              }`}>
-                                {st.recommendation || 'Acceptable'}
-                              </span>
+                            
+                            <div className="p-3 space-y-2">
+                              <div className="flex justify-between items-center text-xs">
+                                <span className="text-slate-400">Available Slots</span>
+                                <span className="font-bold text-white">{Math.max(0, Math.floor((st.capacity - st.current_load) / 50))} / {Math.floor(st.capacity / 50)}</span>
+                              </div>
+                              <div className="flex justify-between items-center text-xs">
+                                <span className="text-slate-400">Wait Time</span>
+                                <span className={`font-bold ${(st.queue_time || 0) > 0 ? 'text-amber-400' : 'text-emerald-400'}`}>
+                                  {(st.queue_time || 0) > 0 ? `${st.queue_time} min` : 'No Wait'}
+                                </span>
+                              </div>
+                              <div className="flex justify-between items-center text-xs border-b border-slate-700/50 pb-2">
+                                <span className="text-slate-400">Status</span>
+                                <span className="font-bold" style={{ color }}>
+                                  {st.status === 'RED' ? 'HIGH LOAD' : st.status === 'YELLOW' ? 'MODERATE' : 'LOW LOAD'}
+                                </span>
+                              </div>
+                              
+                              <p className="text-[11px] font-medium text-slate-300 text-center italic">
+                                "{st.recommendation || 'Acceptable option'}"
+                              </p>
+                              
+                              <button 
+                                onClick={(e) => { e.stopPropagation(); alert(`Navigating to ${st.name}...`); }}
+                                className="w-full mt-1 bg-cyan-500 hover:bg-cyan-400 text-[#0B0F14] font-bold text-xs py-2 rounded-lg transition-colors flex items-center justify-center gap-1"
+                              >
+                                <Zap size={12} fill="currentColor" /> Navigate
+                              </button>
                             </div>
                           </div>
                         </div>
