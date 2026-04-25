@@ -75,7 +75,7 @@ function AppRoutes() {
   
   return (
     <Routes>
-      <Route path="/" element={token ? <Navigate to="/dashboard" /> : <Landing />} />
+      <Route path="/" element={<Landing />} />
       <Route path="/login" element={token ? <Navigate to="/dashboard" /> : <Login />} />
       <Route path="/signup" element={<Navigate to="/login?mode=signup" replace />} />
       <Route
