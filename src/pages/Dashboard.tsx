@@ -45,6 +45,7 @@ import {
 
 import Map, { Marker } from 'react-map-gl/maplibre';
 import 'maplibre-gl/dist/maplibre-gl.css';
+import AssistantPanel from '../components/ui/AssistantPanel';
 
 const MAP_STYLE = 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json';
 
@@ -107,21 +108,34 @@ export default function Dashboard() {
   const [selectedZoneId, setSelectedZoneId] = useState<number>(1);
   const [activeTab, setActiveTab] = useState<'insights'|'impact'|'planning'|'baselines'|'policy'|'failure'|'validation'>('insights');
   const [timeSlider, setTimeSlider] = useState(18); // default to 6 PM
-
   const [userLocation, setUserLocation] = useState<{lat: number, lng: number} | null>(null);
+  const [userCity, setUserCity] = useState<string>("Bengaluru");
 
   useEffect(() => {
+    if (!token) return;
     if ("geolocation" in navigator) {
-      navigator.geolocation.getCurrentPosition((position) => {
-        // Fallback to Bengaluru center if outside reasonable bounds
+      navigator.geolocation.getCurrentPosition(async (position) => {
         const lat = position.coords.latitude;
         const lng = position.coords.longitude;
-        setUserLocation({ lat: 12.97, lng: 77.59 }); // Hardcoded for demo/Bengaluru focus
+        try {
+          const geo = await dashboardAPI.getReverseGeocode(token, lat, lng);
+          if (geo.valid) {
+            setUserLocation({ lat, lng });
+            setUserCity(geo.city);
+          } else {
+            setUserLocation({ lat: 12.97, lng: 77.59 });
+            setUserCity("Bengaluru");
+          }
+        } catch (e) {
+          setUserLocation({ lat: 12.97, lng: 77.59 });
+        }
+      }, () => {
+        setUserLocation({ lat: 12.97, lng: 77.59 });
       });
     } else {
       setUserLocation({ lat: 12.97, lng: 77.59 });
     }
-  }, []);
+  }, [token]);
 
   useEffect(() => {
     if (!token) return;
@@ -380,15 +394,37 @@ export default function Dashboard() {
                   const color = st.status === 'RED' ? '#ef4444' : st.status === 'YELLOW' ? '#eab308' : '#10b981';
                   return (
                     <Marker key={`station-${st.id}`} longitude={st.lng} latitude={st.lat} anchor="center">
-                      <div className="group relative cursor-pointer">
+                      <div className="group relative cursor-pointer z-30">
                         <div 
-                          className={`h-3 w-3 rounded-sm border border-slate-900 shadow-sm transition-transform ${st.recommendation_flag ? 'animate-bounce' : ''}`}
+                          className={`h-4 w-4 rounded-md border-2 border-[#0B0F14] shadow-sm transition-transform ${st.is_best_option ? 'animate-bounce scale-125' : ''}`}
                           style={{ backgroundColor: color }}
                         />
-                        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block bg-slate-900 text-white text-xs px-2 py-1 rounded shadow-lg whitespace-nowrap z-50">
-                          <p className="font-bold">{st.name}</p>
-                          <p className="text-slate-400">Load: {st.current_load}/{st.capacity} kW</p>
-                          {st.recommendation_flag && <p className="text-emerald-400 font-semibold text-[10px]">★ Recommended</p>}
+                        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none w-48 z-50">
+                          <div className="bg-slate-900/95 backdrop-blur-md border border-slate-700 text-white rounded-lg shadow-2xl p-3">
+                            <p className="font-bold text-sm mb-1 text-slate-100">{st.name}</p>
+                            <div className="space-y-1">
+                              <div className="flex justify-between text-xs">
+                                <span className="text-slate-400">Load</span>
+                                <span className="font-medium" style={{ color }}>{st.current_load}/{st.capacity} kW</span>
+                              </div>
+                              <div className="flex justify-between text-xs">
+                                <span className="text-slate-400">Wait Time</span>
+                                <span className="font-medium text-slate-200">{st.queue_time > 0 ? `${st.queue_time} mins` : 'No Queue'}</span>
+                              </div>
+                              <div className="flex justify-between text-xs">
+                                <span className="text-slate-400">Peak Time</span>
+                                <span className="font-medium text-slate-200">{st.predicted_peak_time || '8:30 PM'}</span>
+                              </div>
+                            </div>
+                            <div className="mt-2 pt-2 border-t border-slate-700/50 text-center">
+                              <span className={`text-[10px] font-bold uppercase tracking-wider ${
+                                st.recommendation === 'Optimal' ? 'text-emerald-400' :
+                                st.recommendation === 'Avoid' ? 'text-rose-400' : 'text-amber-400'
+                              }`}>
+                                {st.recommendation || 'Acceptable'}
+                              </span>
+                            </div>
+                          </div>
                         </div>
                       </div>
                     </Marker>
@@ -416,7 +452,7 @@ export default function Dashboard() {
           <div className="rounded-2xl border border-slate-800 bg-slate-900/40 backdrop-blur-sm flex flex-col overflow-hidden">
             <div className="p-5 border-b border-slate-800">
               <h2 className="text-xl font-bold text-white flex items-center gap-2">
-                Zone {selectedZoneId}: {selectedZoneData.name}
+                Zone {selectedZoneId}: {selectedZoneData.name} ({userCity})
               </h2>
               <div className="mt-1 flex items-center gap-2 text-sm text-slate-400">
                 <span className="flex items-center gap-1"><Activity size={14}/> {currentZoneDemand?.current_demand.toFixed(1) || '0.0'} kW</span>
@@ -449,8 +485,29 @@ export default function Dashboard() {
                     <p className="text-sm text-slate-400">Demand is currently {currentZoneDemand?.trend}. Expected to peak at {(currentImpact?.before_peak || 900).toFixed(0)} kW around 8 PM based on historical transit data.</p>
                   </div>
                   <div className="rounded-xl bg-slate-800/50 p-4 border border-slate-700/50">
-                    <h4 className="text-sm font-semibold text-white mb-1">Infrastructure Load</h4>
-                    <p className="text-sm text-slate-400">2 nearby charging hubs are operating at 95% capacity. Grid strain is moderate.</p>
+                    <h4 className="text-sm font-semibold text-white mb-3">Nearby Stations</h4>
+                    {nearbyStations.length === 0 ? (
+                      <p className="text-xs text-slate-400">Detecting location...</p>
+                    ) : (
+                      <div className="space-y-3">
+                        {nearbyStations.map(st => (
+                          <div key={st.id} className={`flex items-center justify-between p-3 rounded-lg border ${st.is_best_option ? 'bg-emerald-500/10 border-emerald-500/30' : 'bg-slate-900/50 border-slate-700'}`}>
+                            <div>
+                              <p className="text-sm font-bold text-white flex items-center gap-2">
+                                {st.name}
+                                {st.is_best_option && <span className="text-[9px] bg-emerald-500 text-white px-1.5 py-0.5 rounded uppercase tracking-wider">Fastest</span>}
+                              </p>
+                              <p className="text-xs text-slate-400 mt-1">{st.distance_km} km away • {st.queue_time > 0 ? `${st.queue_time}m wait` : 'No wait'}</p>
+                            </div>
+                            <div className="text-right">
+                              <span className={`h-2 w-2 inline-block rounded-full mr-2 ${st.status === 'RED' ? 'bg-rose-500' : st.status === 'YELLOW' ? 'bg-amber-400' : 'bg-emerald-500'}`} />
+                              <span className="text-sm font-bold text-slate-200">{st.current_load.toFixed(0)}</span>
+                              <span className="text-xs text-slate-500">/{st.capacity}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                   
                   {/* Demand Forecast Info */}
@@ -759,6 +816,9 @@ export default function Dashboard() {
           </div>
         </div>
       </main>
+      
+      {/* Assistant Chatbot */}
+      <AssistantPanel nearbyStations={nearbyStations} selectedZone={selectedZoneId} />
     </div>
   );
 }

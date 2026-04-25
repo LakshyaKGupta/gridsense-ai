@@ -11,13 +11,15 @@ const FLOAT_CSS = `
 @keyframes pulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.1)} }
 `
 
+import { Zap, Activity, BarChart, Shield, Map as MapIcon, TrendingDown } from 'lucide-react';
+
 const FLOATS = [
-  { icon:'⚡', label:'Load Spike', val:'+96%', color:'#FF4757', x:'10%', y:'15%', delay:0.1, anim:'floatA', dur:'3s', size: 1.2 },
-  { icon:'🔋', label:'EV Charging', val:'247 units', color:'#00E5A0', x:'85%', y:'12%', delay:0.2, anim:'floatB', dur:'3.5s', size: 1 },
-  { icon:'📊', label:'AI Forecast', val:'24h ahead', color:'#00C8FF', x:'88%', y:'55%', delay:0.3, anim:'floatC', dur:'2.8s', size: 1.1 },
-  { icon:'🔮', label:'Accuracy', val:'92%', color:'#A78BFA', x:'8%', y:'70%', delay:0.15, anim:'floatA', dur:'3.2s', size: 0.9 },
-  { icon:'🏙', label:'Zones', val:'198', color:'#F59E0B', x:'80%', y:'80%', delay:0.35, anim:'floatB', dur:'3.8s', size: 1.3 },
-  { icon:'📉', label:'Peak Reduced', val:'−23 kW', color:'#00E5A0', x:'15%', y:'45%', delay:0.25, anim:'floatC', dur:'4s', size: 1 },
+  { icon: <Zap size={20} />, label:'Load Spike', val:'+96%', color:'#FF4757', x:'10%', y:'15%', delay:0.1, anim:'floatA', dur:'3s', size: 1.2 },
+  { icon: <Activity size={20} />, label:'EV Charging', val:'247 units', color:'#00E5A0', x:'85%', y:'12%', delay:0.2, anim:'floatB', dur:'3.5s', size: 1 },
+  { icon: <BarChart size={20} />, label:'AI Forecast', val:'24h ahead', color:'#00C8FF', x:'88%', y:'55%', delay:0.3, anim:'floatC', dur:'2.8s', size: 1.1 },
+  { icon: <Shield size={20} />, label:'Accuracy', val:'92%', color:'#A78BFA', x:'8%', y:'70%', delay:0.15, anim:'floatA', dur:'3.2s', size: 0.9 },
+  { icon: <MapIcon size={20} />, label:'Zones', val:'198', color:'#F59E0B', x:'80%', y:'80%', delay:0.35, anim:'floatB', dur:'3.8s', size: 1.3 },
+  { icon: <TrendingDown size={20} />, label:'Peak Reduced', val:'−23 kW', color:'#00E5A0', x:'15%', y:'45%', delay:0.25, anim:'floatC', dur:'4s', size: 1 },
 ]
 
 export default function Hero() {
@@ -194,24 +196,22 @@ export default function Hero() {
           }}
           id="hero-title"
           style={{
-            fontSize:'clamp(42px,6vw,80px)',
-            fontWeight:900, letterSpacing:'-4px',
-            lineHeight:1.02, marginBottom:24, maxWidth:900,
+            fontSize:'clamp(42px,5.5vw,72px)',
+            fontWeight:900, letterSpacing:'-2px',
+            lineHeight:1.1, marginBottom:24, maxWidth:1000,
+            color: '#fff'
           }}
         >
-          Optimize EV Charging.{' '}
-          <motion.span
-            animate={{ backgroundPosition: ['0% 50%', '100% 50%', '0% 50%'] }}
-            transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
-            style={{
-              background:'linear-gradient(120deg,#00E5A0,#00C8FF,#F59E0B,#00E5A0)',
-              backgroundSize: '200% 200%',
-              WebkitBackgroundClip:'text', backgroundClip:'text',
-              WebkitTextFillColor:'transparent',
-            }}
-          >
-            Eliminate Grid Stress.
-          </motion.span>
+          Prevent Grid Overload <br className="hidden md:block" />
+          <span className="relative inline-block mt-2">
+            <span className="relative z-10 text-white">Before It Happens.</span>
+            <motion.span
+              initial={{ width: 0 }}
+              animate={{ width: '100%' }}
+              transition={{ delay: 0.5, duration: 0.8, ease: "easeOut" }}
+              className="absolute bottom-1 md:bottom-3 left-0 h-3 md:h-5 bg-cyan-500/50 -z-10 -rotate-2"
+            />
+          </span>
         </motion.h1>
 
         <motion.p
@@ -221,12 +221,11 @@ export default function Hero() {
           }}
           id="hero-sub"
           style={{
-            fontSize:'clamp(16px,1.6vw,19px)', color:'rgba(255,255,255,0.6)',
-            lineHeight:1.7, maxWidth:550, marginBottom:40,
+            fontSize:'clamp(16px,1.4vw,18px)', color:'rgba(255,255,255,0.7)',
+            lineHeight:1.6, maxWidth:600, marginBottom:40,
           }}
         >
-          AI-powered demand prediction, scheduling, and infrastructure planning
-          for modern cities — zero hardware changes required.
+          AI-driven EV demand prediction and charging optimization for modern cities.
         </motion.p>
 
         <motion.div
@@ -243,11 +242,14 @@ export default function Hero() {
             href={token ? '/dashboard' : '/login?mode=login'}
             id="hero-sim-btn"
             style={{
-              padding: '18px 36px', fontSize: 16, fontWeight: 700,
-              boxShadow: '0 0 40px rgba(0,229,160,0.4)'
+              padding: '16px 32px', fontSize: 16, fontWeight: 600,
+              backgroundColor: '#06b6d4', color: '#0B0F14',
+              borderRadius: '8px',
+              border: 'none',
+              boxShadow: '0 0 20px rgba(6, 182, 212, 0.4)'
             }}
           >
-            {token ? 'Open Dashboard →' : 'Login to Dashboard →'}
+            View Live Simulation →
           </motion.a>
           <motion.div
             whileHover={{ scale: 1.05, y: -3 }}
@@ -261,11 +263,13 @@ export default function Hero() {
               to={token ? '/dashboard' : '/login?mode=signup'}
               id="hero-demo-btn"
               style={{
-                padding: '18px 36px', fontSize: 16,
-                border: '2px solid rgba(255,255,255,0.25)'
+                padding: '16px 32px', fontSize: 16, fontWeight: 600,
+                border: '1px solid rgba(255,255,255,0.2)',
+                borderRadius: '8px',
+                color: '#fff'
               }}
             >
-              {token ? 'Review Backend Modules' : 'Create Account'}
+              Explore Architecture
             </Link>
           </motion.div>
         </motion.div>

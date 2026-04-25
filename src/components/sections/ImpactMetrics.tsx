@@ -1,152 +1,66 @@
 import { useEffect, useRef, useState } from 'react'
-import { motion } from 'framer-motion'
+import { motion, useInView } from 'framer-motion'
+import { TrendingDown, Activity, DollarSign } from 'lucide-react'
 
 function Counter({ to, suffix = '' }: { to: number; suffix: string }) {
   const [v, setV] = useState(0)
   const ref = useRef<HTMLDivElement>(null)
-  const inView = useRef(false)
+  const inView = useInView(ref, { once: true, margin: "-100px" })
 
   useEffect(() => {
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting && !inView.current) {
-          inView.current = true
-          let n = 0
-          const tick = () => {
-            n += to / 60
-            if (n >= to) { setV(to); return }
-            setV(Math.floor(n))
-            requestAnimationFrame(tick)
-          }
-          requestAnimationFrame(tick)
-        }
-      },
-      { threshold: 0.5 }
-    )
-    if (ref.current) observer.observe(ref.current)
-    return () => observer.disconnect()
-  }, [to])
+    if (inView) {
+      let n = 0
+      const tick = () => {
+        n += to / 60
+        if (n >= to) { setV(to); return }
+        setV(Math.floor(n))
+        requestAnimationFrame(tick)
+      }
+      requestAnimationFrame(tick)
+    }
+  }, [inView, to])
 
-  return <div ref={ref} className="mc-num">{v}{suffix}</div>
+  return <div ref={ref} className="text-5xl font-black text-white">{v}{suffix}</div>
 }
 
 export default function ImpactMetrics() {
   return (
-    <section id="metrics" style={{
-      padding: '120px 0',
-      background: 'linear-gradient(135deg, #080c12 0%, #0B0F14 50%, #080c12 100%)',
-      position: 'relative', overflow: 'hidden'
-    }}>
-      {/* Animated background particles */}
-      <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
-        {[...Array(20)].map((_, i) => (
-          <motion.div
-            key={i}
-            animate={{
-              x: [0, Math.random() * 100 - 50, 0],
-              y: [0, Math.random() * 100 - 50, 0],
-              opacity: [0.1, 0.3, 0.1]
-            }}
-            transition={{
-              duration: Math.random() * 10 + 10,
-              repeat: Infinity,
-              ease: 'easeInOut'
-            }}
-            style={{
-              position: 'absolute',
-              left: `${Math.random() * 100}%`,
-              top: `${Math.random() * 100}%`,
-              width: 4, height: 4,
-              background: '#00E5A0',
-              borderRadius: '50%',
-              boxShadow: '0 0 10px #00E5A0'
-            }}
-          />
-        ))}
-      </div>
-
-      <div style={{ maxWidth: 1280, margin: '0 auto', padding: '0 7%', position: 'relative', zIndex: 1 }}>
-        <motion.div
-          initial={{ opacity: 0, y: 40 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
-          transition={{ duration: 0.8 }}
-          style={{ textAlign: 'center', marginBottom: 80 }}
-        >
-          <motion.span
-            initial={{ opacity: 0, scale: 0.8 }}
-            whileInView={{ opacity: 1, scale: 1 }}
-            transition={{ delay: 0.2 }}
-            style={{
-              display: 'inline-block', fontSize: 12, fontWeight: 700,
-              textTransform: 'uppercase', letterSpacing: '2px', color: '#F59E0B', marginBottom: 16,
-            }}
-          >
+    <section id="metrics" className="py-32 bg-[#080c12] relative overflow-hidden">
+      <div className="max-w-6xl mx-auto px-6 relative z-10">
+        <div className="text-center mb-20">
+          <span className="text-xs font-bold uppercase tracking-[2px] text-emerald-500 mb-4 block">
             Proven Results
-          </motion.span>
-          <motion.h2
-            initial={{ opacity: 0, y: 30 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.3 }}
-            style={{
-              fontSize: 'clamp(32px,4vw,56px)', fontWeight: 900,
-              letterSpacing: -3, lineHeight: 1.05, marginBottom: 20,
-            }}
-          >
-            Numbers That<br />
-            <span style={{ background: 'linear-gradient(120deg,#F59E0B,#FF6B35)', WebkitBackgroundClip: 'text', backgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
-              Matter to Operators
-            </span>
-          </motion.h2>
-        </motion.div>
+          </span>
+          <h2 className="text-4xl md:text-5xl font-black tracking-tight text-white mb-6">
+            System Impact
+          </h2>
+          <p className="text-lg text-slate-400 max-w-2xl mx-auto">
+            Measurable improvements in grid stability and operational costs.
+          </p>
+        </div>
 
-        <motion.div
-          initial="hidden"
-          whileInView="show"
-          viewport={{ once: true }}
-          variants={{ show: { transition: { staggerChildren: 0.15, delayChildren: 0.2 } } }}
-          style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: 40 }}
-        >
+        <div className="grid md:grid-cols-3 gap-8">
           {[
-            { to: 25, suffix: '%', label: 'Peak Load Reduction', color: '#00E5A0', icon: '📉' },
-            { to: 85, suffix: '%', label: 'Forecast Accuracy', color: '#00C8FF', icon: '🎯' },
-            { to: 40, suffix: '%', label: 'Better Utilization', color: '#F59E0B', icon: '⚡' },
-            { to: 198, suffix: '', label: 'Zones Covered', color: '#A78BFA', icon: '🗺' },
+            { to: 25, suffix: '%', label: 'Peak Load Reduced', color: 'text-emerald-400', icon: <TrendingDown size={32} className="text-emerald-400" /> },
+            { to: 85, suffix: '%', label: 'Forecast Accuracy', color: 'text-cyan-400', icon: <Activity size={32} className="text-cyan-400" /> },
+            { to: 40, suffix: '%', label: 'Cost Savings', color: 'text-amber-400', icon: <DollarSign size={32} className="text-amber-400" /> },
           ].map((m, i) => (
             <motion.div
               key={i}
-              variants={{
-                hidden: { opacity: 0, y: 50, scale: 0.8 },
-                show: { opacity: 1, y: 0, scale: 1, transition: { type: 'spring', stiffness: 200 } }
-              }}
-              whileHover={{ scale: 1.05, y: -10 }}
-              transition={{ type: 'spring', stiffness: 300 }}
-              style={{
-                background: '#0F1419', border: `1px solid ${m.color}20`,
-                borderRadius: 20, padding: '40px 32px', textAlign: 'center',
-                position: 'relative', overflow: 'hidden'
-              }}
+              initial={{ opacity: 0, y: 30 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ delay: i * 0.2, duration: 0.6 }}
+              className="bg-slate-900 border border-slate-800 rounded-3xl p-10 flex flex-col items-center text-center hover:bg-slate-800/80 transition-colors"
             >
-              <motion.div
-                animate={{ rotate: [0, 5, -5, 0] }}
-                transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
-                style={{ fontSize: 48, marginBottom: 20 }}
-              >
+              <div className="mb-8 p-4 bg-slate-950 rounded-2xl border border-slate-800">
                 {m.icon}
-              </motion.div>
+              </div>
               <Counter to={m.to} suffix={m.suffix} />
-              <div style={{ fontSize: 16, color: '#8A9BB0', marginTop: 12 }}>{m.label}</div>
-              <motion.div
-                style={{
-                  position: 'absolute', bottom: 0, left: 0, right: 0, height: 4,
-                  background: `linear-gradient(90deg, transparent, ${m.color}, transparent)`
-                }}
-                animate={{ x: ['-100%', '100%'] }}
-                transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
-              />
+              <div className="text-slate-400 mt-4 font-medium">{m.label}</div>
             </motion.div>
           ))}
-        </motion.div>
+        </div>
       </div>
     </section>
   )

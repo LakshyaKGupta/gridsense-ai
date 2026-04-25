@@ -5,6 +5,7 @@ from app.routes import auth, demand, optimize, locations, simulate, realtime, fo
 from app.database import engine, Base
 from app.services.explainability_engine import ExplainabilityEngine
 from app.services.simulation_engine import SimulationEngine
+from app.routes.stations import simulate_stations
 from starlette.responses import Response
 import logging
 import time
@@ -125,6 +126,7 @@ async def add_explainability_and_logging(request: Request, call_next):
 async def start_background_tasks():
     try:
         asyncio.create_task(bg_simulator.simulate_realtime_demand())
+        asyncio.create_task(simulate_stations())
         logger.info("Started background realtime demand simulation")
     except Exception as e:
         logger.error(f"Failed to start background tasks: {e}")

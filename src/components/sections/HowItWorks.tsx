@@ -1,117 +1,72 @@
-import { motion } from 'framer-motion'
-
-const fw = { hidden: { opacity: 0, y: 32 }, show: { opacity: 1, y: 0 } }
+import { useRef } from "react";
+import { useScroll, useTransform, motion } from "framer-motion";
+import { BrainCircuit, Zap, Map as MapIcon } from "lucide-react";
 
 export default function HowItWorks() {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const { scrollYProgress } = useScroll({
+    target: containerRef,
+    offset: ["start end", "end start"],
+  });
+
+  const scale = useTransform(scrollYProgress, [0, 0.2, 0.8, 1], [0.8, 1, 1, 0.8]);
+  const opacity = useTransform(scrollYProgress, [0, 0.2, 0.8, 1], [0, 1, 1, 0]);
+  const rotateX = useTransform(scrollYProgress, [0, 0.2], [20, 0]);
+
   return (
-    <section id="how" style={{ padding: '120px 0', background: '#0B0F14', borderTop: '1px solid rgba(255,255,255,0.06)', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-      <div style={{ maxWidth: 1280, margin: '0 auto', padding: '0 7%' }}>
-        <motion.div
-          initial="hidden"
-          whileInView="show"
-          viewport={{ once: true }}
-          variants={{ show: { transition: { staggerChildren: 0.15 } } }}
-        >
-          <motion.span
-            variants={fw}
-            style={{
-              display: 'block', fontSize: 12, fontWeight: 700,
-              textTransform: 'uppercase', letterSpacing: '2px', color: '#00C8FF', marginBottom: 16,
-            }}
-          >
-            How It Works
-          </motion.span>
-          <motion.h2
-            variants={fw}
-            style={{
-              fontSize: 'clamp(32px,4vw,56px)', fontWeight: 900,
-              letterSpacing: -3, lineHeight: 1.05, marginBottom: 24,
-            }}
-          >
-            Three Steps to<br />
-            <span style={{ background: 'linear-gradient(120deg,#00E5A0,#00C8FF)', WebkitBackgroundClip: 'text', backgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
-              Grid Salvation
-            </span>
-          </motion.h2>
-          <motion.p
-            variants={fw}
-            style={{ fontSize: 18, color: '#8A9BB0', maxWidth: 600, lineHeight: 1.7, marginBottom: 64 }}
-          >
-            Pure software intelligence. No wires touched. Deploy in hours.
-          </motion.p>
-        </motion.div>
-
-        <motion.div
-          initial="hidden"
-          whileInView="show"
-          viewport={{ once: true }}
-          variants={{ show: { transition: { staggerChildren: 0.2, delayChildren: 0.2 } } }}
-          style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 32 }}
-        >
-          {[
-            {
-              step: '01', icon: '🔮', color: '#00E5A0',
-              title: 'Predict Demand',
-              desc: 'AI forecasts EV charging load by zone with 24-hour horizon and ≤15% error margin.',
-              anim: 'scale'
-            },
-            {
-              step: '02', icon: '⚡', color: '#00C8FF',
-              title: 'Optimize Scheduling',
-              desc: 'Linear programming shifts sessions to off-peak windows within user preferences.',
-              anim: 'rotate'
-            },
-            {
-              step: '03', icon: '📍', color: '#F59E0B',
-              title: 'Guide Expansion',
-              desc: 'Spatial clustering identifies optimal sites for new charging infrastructure.',
-              anim: 'bounce'
-            },
-          ].map((item, i) => (
-            <motion.div
-              key={i}
-              variants={fw}
-              whileHover={{ scale: 1.05, y: -10 }}
-              transition={{ type: 'spring', stiffness: 300 }}
-              style={{
-                background: '#0F1419', border: `1px solid ${item.color}20`,
-                borderRadius: 20, padding: '40px 32px', textAlign: 'center',
-                position: 'relative', overflow: 'hidden'
-              }}
-            >
-              <motion.div
-                initial={{ scale: 0 }}
-                whileInView={{ scale: 1 }}
-                transition={{ delay: 0.5 + i * 0.2, type: 'spring' }}
-                style={{
-                  position: 'absolute', top: 20, right: 20,
-                  background: `${item.color}15`, borderRadius: '50%',
-                  width: 60, height: 60, display: 'flex', alignItems: 'center', justifyContent: 'center'
-                }}
-              >
-                <span style={{ fontSize: 12, fontWeight: 800, color: item.color }}>{item.step}</span>
-              </motion.div>
-
-              <motion.div
-                animate={item.anim === 'scale' ? { scale: [1, 1.1, 1] } :
-                        item.anim === 'rotate' ? { rotate: [0, 10, -10, 0] } :
-                        { y: [0, -5, 0] }}
-                transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
-                style={{ fontSize: 48, marginBottom: 20 }}
-              >
-                {item.icon}
-              </motion.div>
-
-              <h3 style={{ fontSize: 24, fontWeight: 700, marginBottom: 16, color: item.color }}>
-                {item.title}
-              </h3>
-              <p style={{ fontSize: 16, color: '#8A9BB0', lineHeight: 1.6 }}>
-                {item.desc}
-              </p>
-            </motion.div>
-          ))}
-        </motion.div>
+    <section ref={containerRef} id="how" className="py-32 bg-[#0B0F14] relative perspective-1000">
+      <div className="max-w-6xl mx-auto px-6 mb-20 text-center">
+        <span className="text-xs font-bold uppercase tracking-[2px] text-cyan-500 mb-4 block">
+          How It Works
+        </span>
+        <h2 className="text-4xl md:text-5xl font-black tracking-tight text-white mb-6">
+          Three Steps to <span className="text-cyan-400">Grid Salvation</span>
+        </h2>
+        <p className="text-lg text-slate-400 max-w-2xl mx-auto">
+          Pure software intelligence. No wires touched. Deploy in hours.
+        </p>
       </div>
+
+      <motion.div 
+        style={{ scale, opacity, rotateX, transformStyle: "preserve-3d" }}
+        className="max-w-5xl mx-auto bg-slate-900 border border-slate-700/50 rounded-[2rem] shadow-2xl p-8 md:p-16 overflow-hidden relative"
+      >
+        <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/10 via-transparent to-emerald-500/10 pointer-events-none" />
+        
+        <div className="grid md:grid-cols-3 gap-12 relative z-10">
+          
+          <div className="flex flex-col items-center text-center">
+            <div className="w-16 h-16 rounded-2xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center mb-6">
+              <BrainCircuit className="text-cyan-400" size={32} />
+            </div>
+            <h3 className="text-xl font-bold text-white mb-3">1. Predict Demand</h3>
+            <p className="text-slate-400 text-sm leading-relaxed">
+              AI forecasts EV charging load by zone with a 24-hour horizon, predicting peak times with ≤15% error margin.
+            </p>
+          </div>
+
+          <div className="flex flex-col items-center text-center">
+            <div className="w-16 h-16 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center mb-6">
+              <Zap className="text-emerald-400" size={32} />
+            </div>
+            <h3 className="text-xl font-bold text-white mb-3">2. Optimize Charging</h3>
+            <p className="text-slate-400 text-sm leading-relaxed">
+              Linear programming algorithms automatically shift non-urgent charging sessions to off-peak windows.
+            </p>
+          </div>
+
+          <div className="flex flex-col items-center text-center">
+            <div className="w-16 h-16 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center mb-6">
+              <MapIcon className="text-amber-400" size={32} />
+            </div>
+            <h3 className="text-xl font-bold text-white mb-3">3. Plan Infrastructure</h3>
+            <p className="text-slate-400 text-sm leading-relaxed">
+              Spatial clustering algorithms identify the precise optimal locations for new physical charging stations.
+            </p>
+          </div>
+
+        </div>
+      </motion.div>
     </section>
-  )
+  );
 }

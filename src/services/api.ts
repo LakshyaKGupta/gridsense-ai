@@ -204,6 +204,11 @@ export interface RobustnessPoint {
   accuracy: number;
 }
 
+export interface ReverseGeocodeResponse {
+  city: string;
+  valid: boolean;
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_URL}${path}`, init);
   const raw = (await response.json().catch(() => null)) as ApiEnvelope<T> | null;
@@ -325,6 +330,11 @@ export const dashboardAPI = {
 
   getRobustnessAnalysis: (token: string): Promise<RobustnessPoint[]> =>
     request<RobustnessPoint[]>('/advanced/analysis/robustness', {
+      headers: withAuth(token),
+    }),
+
+  getReverseGeocode: (token: string, lat: number, lng: number): Promise<ReverseGeocodeResponse> =>
+    request<ReverseGeocodeResponse>(`/stations/reverse-geocode?lat=${lat}&lng=${lng}`, {
       headers: withAuth(token),
     }),
 };
