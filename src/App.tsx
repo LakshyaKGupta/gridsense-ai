@@ -17,7 +17,6 @@ const CTA = lazy(() => import('./components/sections/CTA'))
 function Landing() {
   return (
     <>
-      <Cursor />
       <Navbar />
       
       {/* 1. Hero — epic full screen */}
@@ -95,6 +94,7 @@ export default function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
+        <Cursor />
         <AppRoutes />
       </AuthProvider>
     </BrowserRouter>
