@@ -31,7 +31,12 @@ import {
   OptimizationImpact,
   Recommendation,
   NearbyStation,
-  DemoScenario
+  DemoScenario,
+  DataStatus,
+  RealisticImpact,
+  AdvancedLocation,
+  FailureScenario,
+  Baselines
 } from '../services/api';
 
 import Map, { Marker } from 'react-map-gl/maplibre';
@@ -82,8 +87,16 @@ export default function Dashboard() {
   const [nearbyStations, setNearbyStations] = useState<NearbyStation[]>([]);
   const [demoScenario, setDemoScenario] = useState<DemoScenario | null>(null);
   
+  // Advanced State
+  const [dataStatus, setDataStatus] = useState<DataStatus | null>(null);
+  const [realisticImpact, setRealisticImpact] = useState<RealisticImpact | null>(null);
+  const [advancedLocations, setAdvancedLocations] = useState<AdvancedLocation[]>([]);
+  const [failureScenario, setFailureScenario] = useState<FailureScenario | null>(null);
+  const [baselines, setBaselines] = useState<Baselines | null>(null);
+  const [policyAdoption, setPolicyAdoption] = useState(60);
+  
   const [selectedZoneId, setSelectedZoneId] = useState<number>(1);
-  const [activeTab, setActiveTab] = useState<'insights'|'recommendations'|'impact'|'demo'>('insights');
+  const [activeTab, setActiveTab] = useState<'insights'|'impact'|'planning'|'baselines'|'failure'|'policy'>('insights');
   const [timeSlider, setTimeSlider] = useState(18); // default to 6 PM
 
   const [userLocation, setUserLocation] = useState<{lat: number, lng: number} | null>(null);
@@ -127,13 +140,25 @@ export default function Dashboard() {
         }
 
         // Fetch forecast and impact for the selected zone
-        const [fc, imp] = await Promise.all([
+        const [fc, imp, stat, realImp, advLoc, failScen, baseCmp] = await Promise.all([
           dashboardAPI.getForecast(token, selectedZoneId),
-          dashboardAPI.getImpact(token, selectedZoneId)
+          dashboardAPI.getImpact(token, selectedZoneId),
+          dashboardAPI.getDataStatus(token).catch(() => null),
+          dashboardAPI.getRealisticImpact(token, selectedZoneId, policyAdoption / 100).catch(() => null),
+          dashboardAPI.getAdvancedLocations(token).catch(() => []),
+          dashboardAPI.getFailureScenario(token).catch(() => null),
+          dashboardAPI.compareBaselines(token).catch(() => null)
         ]);
         
-        setForecasts(prev => ({ ...prev, [selectedZoneId]: fc }));
-        setImpacts(prev => ({ ...prev, [selectedZoneId]: imp }));
+        if (!cancelled) {
+          setForecasts(prev => ({ ...prev, [selectedZoneId]: fc }));
+          setImpacts(prev => ({ ...prev, [selectedZoneId]: imp }));
+          if (stat) setDataStatus(stat);
+          if (realImp) setRealisticImpact(realImp);
+          if (advLoc) setAdvancedLocations(advLoc);
+          if (failScen) setFailureScenario(failScen);
+          if (baseCmp) setBaselines(baseCmp);
+        }
         
       } catch (err) {
         console.error("Dashboard fetch error:", err);
@@ -185,7 +210,10 @@ export default function Dashboard() {
         </div>
 
         <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2 rounded-full border border-white/5 bg-white/5 px-3 py-1.5 text-xs text-slate-300">
+          <div className={`flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold ${dataStatus?.is_real_data ? 'border-indigo-500/30 bg-indigo-500/10 text-indigo-300' : 'border-slate-500/30 bg-slate-500/10 text-slate-300'}`}>
+            {dataStatus?.is_real_data ? 'Running on Real Data' : 'Running on Simulated Data'}
+          </div>
+          <div className="flex items-center gap-2 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5 text-xs text-emerald-300">
             <span className="relative flex h-2 w-2">
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75"></span>
               <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500"></span>
@@ -364,12 +392,12 @@ export default function Dashboard() {
               </div>
             </div>
 
-            <div className="flex border-b border-slate-800">
-              {(['insights', 'impact', 'recommendations', 'demo'] as const).map(tab => (
+            <div className="flex border-b border-slate-800 flex-wrap">
+              {(['insights', 'impact', 'planning', 'baselines', 'policy', 'failure'] as const).map(tab => (
                 <button
                   key={tab}
                   onClick={() => setActiveTab(tab)}
-                  className={`flex-1 py-3 text-[10px] sm:text-xs font-bold uppercase tracking-wider transition-colors ${
+                  className={`py-3 px-3 text-[10px] sm:text-[11px] font-bold uppercase tracking-wider transition-colors whitespace-nowrap ${
                     activeTab === tab ? 'text-cyan-400 border-b-2 border-cyan-400 bg-cyan-500/5' : 'text-slate-500 hover:text-slate-300'
                   }`}
                 >
@@ -396,14 +424,18 @@ export default function Dashboard() {
 
               {/* Tab Content: Impact (BEFORE vs AFTER) */}
               {activeTab === 'impact' && (
-                <div className="flex flex-col h-full">
-                  <div className="flex justify-between items-end mb-4">
+                <div className="flex flex-col h-full space-y-4">
+                  <div className="flex justify-between items-end">
                     <div>
-                      <h4 className="text-sm font-semibold text-white">Peak Load Comparison</h4>
-                      <p className="text-xs text-emerald-400 font-medium mt-1">Reduced by {currentImpact?.reduction_percent?.toFixed(1) || '15.7'}%</p>
+                      <h4 className="text-sm font-semibold text-white">Realistic Peak Load Reduction</h4>
+                      <div className="flex items-center gap-3 mt-1 text-xs">
+                        <span className="text-emerald-400 font-medium">Ideal: {realisticImpact?.ideal_peak_reduction || '22%'}</span>
+                        <span className="text-slate-500">|</span>
+                        <span className="text-cyan-400 font-medium">With {realisticImpact?.user_adoption_rate || '60%'} Adoption: {realisticImpact?.realistic_peak_reduction || '14%'}</span>
+                      </div>
                     </div>
                   </div>
-                  <div className="flex-1 min-h-[200px]">
+                  <div className="min-h-[200px] w-full border border-slate-800 rounded-xl bg-slate-900/50 p-2">
                     <ResponsiveContainer width="100%" height="100%">
                       <AreaChart data={currentForecast?.forecasts ?? []} margin={{top: 10, right: 0, left: -20, bottom: 0}}>
                         <defs>
@@ -425,62 +457,156 @@ export default function Dashboard() {
                       </AreaChart>
                     </ResponsiveContainer>
                   </div>
-                  <p className="text-xs text-slate-500 text-center mt-3 border-t border-slate-800 pt-3">
-                    Red line shows baseline demand. Green area indicates the smart-scheduled EV charging load curve.
-                  </p>
-                </div>
-              )}
-
-              {/* Tab Content: Recommendations */}
-              {activeTab === 'recommendations' && (
-                <div className="space-y-4">
-                  <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-4 flex gap-3">
-                    <CheckCircle2 className="text-emerald-500 shrink-0 mt-0.5" size={18} />
-                    <div>
-                      <h4 className="text-sm font-semibold text-emerald-100">Shift charging to 11 PM</h4>
-                      <p className="mt-1 text-xs text-emerald-200/70 leading-relaxed mb-2">
-                        Reason: Peak detected at 8 PM, low night utilization expected.
-                      </p>
-                      <div className="flex items-center gap-3 text-[10px] uppercase font-bold tracking-wider">
-                        <span className="text-cyan-400 bg-cyan-500/10 px-2 py-1 rounded">Reduces peak by 22%</span>
-                        <span className="text-slate-400">Confidence: 81%</span>
+                  
+                  {/* Explainability Block */}
+                  <div className="p-3 bg-slate-800/50 rounded-xl border border-slate-700">
+                    <p className="text-xs font-semibold text-slate-300 mb-2">AI Weighting Factors:</p>
+                    <div className="grid grid-cols-3 gap-2">
+                      <div className="bg-slate-900 p-2 rounded text-center">
+                        <p className="text-xs text-slate-500 mb-1">Demand Trend</p>
+                        <p className="text-sm font-bold text-cyan-400">{realisticImpact?.explanation?.demand_weight || 0.6}</p>
+                      </div>
+                      <div className="bg-slate-900 p-2 rounded text-center">
+                        <p className="text-xs text-slate-500 mb-1">Time Factor</p>
+                        <p className="text-sm font-bold text-purple-400">{realisticImpact?.explanation?.time_factor || 0.3}</p>
+                      </div>
+                      <div className="bg-slate-900 p-2 rounded text-center">
+                        <p className="text-xs text-slate-500 mb-1">Grid Spillover</p>
+                        <p className="text-sm font-bold text-amber-400">{realisticImpact?.explanation?.spillover || 0.1}</p>
                       </div>
                     </div>
                   </div>
-                  {recommendations.slice(0, 2).map((rec, i) => (
+                </div>
+              )}
+
+              {/* Tab Content: Infrastructure Planning */}
+              {activeTab === 'planning' && (
+                <div className="space-y-3">
+                  <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-4 mb-4">
+                    <h4 className="text-sm font-semibold text-emerald-100 mb-1">Advanced Placement Engine</h4>
+                    <p className="text-[11px] text-emerald-200/70">Scoring formula: (Demand Growth × 0.5) + (Distance Gap × 0.3) + (Grid Margin × 0.2)</p>
+                  </div>
+                  {advancedLocations.map((loc, i) => (
                     <div key={i} className="rounded-xl border border-slate-700/50 bg-slate-800/30 p-4 flex flex-col gap-2 group cursor-pointer hover:bg-slate-800/80 transition">
                       <div className="flex justify-between items-start">
-                        <h4 className="text-sm font-semibold text-white">Zone {rec.zone_id} Infrastructure</h4>
-                        <ChevronRight size={16} className="text-slate-600 group-hover:text-white" />
+                        <h4 className="text-sm font-bold text-white">{loc.name}</h4>
+                        <div className="bg-cyan-500/20 text-cyan-400 px-2 py-0.5 rounded text-[10px] font-bold">Score: {loc.final_score}</div>
                       </div>
-                      <p className="text-xs text-slate-400 line-clamp-2">{rec.justification}</p>
-                      <span className="text-[10px] text-amber-400 font-semibold uppercase">High EV Growth Area</span>
+                      <p className="text-xs text-slate-400 line-clamp-2 mt-1">{loc.justification}</p>
+                      <div className="flex items-center gap-4 mt-2">
+                        <span className="text-[10px] text-amber-400 font-semibold uppercase flex items-center gap-1"><ArrowUp size={10}/> Growth: {loc.demand_growth}</span>
+                        <span className="text-[10px] text-emerald-400 font-semibold uppercase flex items-center gap-1"><MapIcon size={10}/> Gap: {loc.distance_gap}</span>
+                      </div>
                     </div>
                   ))}
                 </div>
               )}
 
-              {/* Tab Content: Demo Scenario */}
-              {activeTab === 'demo' && demoScenario && (
+              {/* Tab Content: Baselines Comparison */}
+              {activeTab === 'baselines' && baselines && (
                 <div className="space-y-4">
-                  <h3 className="text-white font-bold">{demoScenario.scenario_name}</h3>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="p-3 bg-slate-800/50 rounded-xl border border-rose-500/20">
-                      <p className="text-xs text-slate-400">Current Load</p>
-                      <p className="text-xl font-bold text-rose-400">{demoScenario.current_state.grid_load} kW</p>
-                      <p className="text-[10px] text-rose-500 font-bold mt-1 uppercase">{demoScenario.current_state.status}</p>
+                  <h3 className="text-sm font-bold text-white mb-2">AI vs Baseline Methodologies</h3>
+                  <div className="space-y-3">
+                    <div className="p-3 bg-slate-800/50 rounded-xl border border-rose-500/20 flex justify-between items-center">
+                      <div>
+                        <p className="text-xs text-slate-400 uppercase font-bold">1. No Optimization</p>
+                        <p className="text-sm font-bold text-white mt-1">{baselines.no_optimization.peak_load} kW Peak</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-xs text-rose-400 font-semibold">Cost: {baselines.no_optimization.cost_efficiency}</p>
+                        <p className="text-[10px] text-slate-500 mt-1">Util: {baselines.no_optimization.utilization}</p>
+                      </div>
                     </div>
-                    <div className="p-3 bg-slate-800/50 rounded-xl border border-emerald-500/20">
-                      <p className="text-xs text-slate-400">Optimized Load</p>
-                      <p className="text-xl font-bold text-emerald-400">{demoScenario.optimized_state.grid_load} kW</p>
-                      <p className="text-[10px] text-emerald-500 font-bold mt-1 uppercase">{demoScenario.optimized_state.status}</p>
+                    
+                    <div className="p-3 bg-slate-800/50 rounded-xl border border-amber-500/20 flex justify-between items-center">
+                      <div>
+                        <p className="text-xs text-slate-400 uppercase font-bold">2. Uniform Infrastructure</p>
+                        <p className="text-sm font-bold text-white mt-1">{baselines.uniform_placement.peak_load} kW Peak</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-xs text-amber-400 font-semibold">Cost: {baselines.uniform_placement.cost_efficiency}</p>
+                        <p className="text-[10px] text-slate-500 mt-1">Util: {baselines.uniform_placement.utilization}</p>
+                      </div>
+                    </div>
+
+                    <div className="p-3 bg-cyan-900/20 rounded-xl border border-cyan-500/50 flex justify-between items-center shadow-[0_0_15px_rgba(6,182,212,0.15)]">
+                      <div>
+                        <p className="text-xs text-cyan-400 uppercase font-bold">3. GridSense AI Optimized</p>
+                        <p className="text-sm font-bold text-white mt-1">{baselines.ai_optimized.peak_load} kW Peak</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-xs text-emerald-400 font-semibold">Cost: {baselines.ai_optimized.cost_efficiency}</p>
+                        <p className="text-[10px] text-slate-400 mt-1">Util: {baselines.ai_optimized.utilization}</p>
+                      </div>
                     </div>
                   </div>
-                  <div className="p-3 bg-slate-800/50 rounded-xl">
-                    <p className="text-xs font-semibold text-white mb-2">Actions Taken:</p>
-                    <ul className="text-xs text-slate-400 list-disc pl-4 space-y-1">
-                      {demoScenario.optimized_state.actions_taken.map((a: string, i: number) => <li key={i}>{a}</li>)}
-                    </ul>
+                </div>
+              )}
+
+              {/* Tab Content: Policy / Government View */}
+              {activeTab === 'policy' && (
+                <div className="space-y-4">
+                  <div className="p-4 bg-slate-800/50 rounded-xl border border-slate-700">
+                    <h3 className="text-sm font-bold text-white mb-3">Compliance & Policy Simulation</h3>
+                    <div className="space-y-4">
+                      <div>
+                        <div className="flex justify-between mb-1">
+                          <label className="text-xs text-slate-400">User Adoption Rate Simulation</label>
+                          <span className="text-xs text-cyan-400 font-bold">{policyAdoption}%</span>
+                        </div>
+                        <input 
+                          type="range" 
+                          min="0" max="100" step="10"
+                          value={policyAdoption} 
+                          onChange={(e) => setPolicyAdoption(Number(e.target.value))}
+                          className="w-full h-1 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-cyan-400"
+                        />
+                      </div>
+                      <div className="p-3 bg-slate-900 rounded flex justify-between items-center">
+                        <span className="text-xs text-slate-300">Projected Grid Stress Reduction</span>
+                        <span className="text-sm font-bold text-emerald-400">{realisticImpact?.realistic_peak_reduction || '0%'}</span>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-3">
+                    <button className="p-3 rounded-xl border border-slate-700 hover:border-cyan-500/50 hover:bg-cyan-500/5 text-left transition">
+                      <p className="text-xs font-bold text-white mb-1">Enforce Off-Peak Charging</p>
+                      <p className="text-[10px] text-slate-500">Commercial fleets only</p>
+                    </button>
+                    <button className="p-3 rounded-xl border border-slate-700 hover:border-emerald-500/50 hover:bg-emerald-500/5 text-left transition">
+                      <p className="text-xs font-bold text-white mb-1">Incentivize Night Charging</p>
+                      <p className="text-[10px] text-slate-500">Residential subsidy program</p>
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Tab Content: Failure Scenarios */}
+              {activeTab === 'failure' && failureScenario && (
+                <div className="space-y-4">
+                  <div className="p-4 bg-rose-500/10 rounded-xl border border-rose-500/30">
+                    <div className="flex items-center gap-2 text-rose-400 mb-2">
+                      <AlertTriangle size={18} />
+                      <h3 className="text-sm font-bold">{failureScenario.scenario_type}</h3>
+                    </div>
+                    <p className="text-xs text-rose-200/80 mb-4">{failureScenario.impact}</p>
+                    
+                    <div className="bg-slate-900/80 rounded-lg p-3">
+                      <p className="text-[11px] font-bold text-emerald-400 uppercase tracking-wider mb-2">AI Auto-Response Triggered</p>
+                      <ul className="text-xs text-slate-300 space-y-2">
+                        {failureScenario.ai_response.map((res, i) => (
+                          <li key={i} className="flex gap-2">
+                            <Zap size={14} className="text-emerald-500 shrink-0" />
+                            <span>{res}</span>
+                          </li>
+                        ))}
+                      </ul>
+                      <div className="mt-3 pt-3 border-t border-slate-800 text-xs">
+                        <span className="text-slate-500">Recovery Time: </span>
+                        <span className="text-white font-bold">{failureScenario.grid_stability_recovered_in}</span>
+                      </div>
+                    </div>
                   </div>
                 </div>
               )}

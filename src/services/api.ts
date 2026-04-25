@@ -135,6 +135,51 @@ export interface DemoScenario {
   impact: any;
 }
 
+export interface DataStatus {
+  is_real_data: boolean;
+}
+
+export interface RealisticImpact {
+  zone_id: number;
+  ideal_peak_reduction: string;
+  user_adoption_rate: string;
+  realistic_peak_reduction: string;
+  explanation: {
+    demand_weight: number;
+    time_factor: number;
+    spillover: number;
+  };
+}
+
+export interface AdvancedLocation {
+  id: number;
+  name: string;
+  demand_growth: number;
+  distance_gap: number;
+  capacity_margin: number;
+  final_score: number;
+  justification: string;
+}
+
+export interface FailureScenario {
+  scenario_type: string;
+  impact: string;
+  ai_response: string[];
+  grid_stability_recovered_in: string;
+}
+
+export interface BaselineCompare {
+  peak_load: number;
+  utilization: string;
+  cost_efficiency: string;
+}
+
+export interface Baselines {
+  no_optimization: BaselineCompare;
+  uniform_placement: BaselineCompare;
+  ai_optimized: BaselineCompare;
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_URL}${path}`, init);
   const raw = (await response.json().catch(() => null)) as ApiEnvelope<T> | null;
@@ -216,6 +261,31 @@ export const dashboardAPI = {
 
   getDemoScenario: (token: string): Promise<DemoScenario> =>
     request<DemoScenario>('/demo/scenario', {
+      headers: withAuth(token),
+    }),
+
+  getDataStatus: (token: string): Promise<DataStatus> =>
+    request<DataStatus>('/advanced/data/status', {
+      headers: withAuth(token),
+    }),
+
+  getRealisticImpact: (token: string, zoneId: number, adoptionRate: number = 0.60): Promise<RealisticImpact> =>
+    request<RealisticImpact>(`/advanced/impact/realistic?zone_id=${zoneId}&adoption_rate=${adoptionRate}`, {
+      headers: withAuth(token),
+    }),
+
+  getAdvancedLocations: (token: string): Promise<AdvancedLocation[]> =>
+    request<AdvancedLocation[]>('/advanced/locations/advanced', {
+      headers: withAuth(token),
+    }),
+
+  getFailureScenario: (token: string): Promise<FailureScenario> =>
+    request<FailureScenario>('/advanced/scenario/failure', {
+      headers: withAuth(token),
+    }),
+
+  compareBaselines: (token: string): Promise<Baselines> =>
+    request<Baselines>('/advanced/baselines/compare', {
       headers: withAuth(token),
     }),
 };
