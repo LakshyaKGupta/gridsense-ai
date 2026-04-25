@@ -1,5 +1,5 @@
 // Central State Engine - uses backend real EV stations API
-const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8000';
+const API_URL = import.meta.env.VITE_API_URL ?? '';
 
 export type Zone = {
   id: number;
@@ -47,6 +47,18 @@ export type SystemState = {
   data_source: 'real' | 'fallback';
 };
 
+// Fallback EV stations for when backend is unavailable
+const fallbackStations: Station[] = [
+  { id: 1, name: 'Tesla Supercharger Indiranagar', lat: 12.9784, lng: 77.6408, load: 180, capacity: 300, status: 'YELLOW', distance: 1.2, wait_time: 0, operator: 'Tesla', source: 'fallback' },
+  { id: 2, name: 'ABL Charging Koramangala', lat: 12.9279, lng: 77.6271, load: 220, capacity: 300, status: 'RED', distance: 2.1, wait_time: 1.4, operator: 'ABL', source: 'fallback' },
+  { id: 3, name: 'ChargePoint Whitefield', lat: 12.9698, lng: 77.7499, load: 95, capacity: 300, status: 'GREEN', distance: 3.5, wait_time: 0, operator: 'ChargePoint', source: 'fallback' },
+  { id: 4, name: 'EESL Station Electronic City', lat: 12.8399, lng: 77.6770, load: 145, capacity: 300, status: 'GREEN', distance: 5.2, wait_time: 0, operator: 'EESL', source: 'fallback' },
+  { id: 5, name: 'ABB Charging Jayanagar', lat: 12.9299, lng: 77.5826, load: 165, capacity: 300, status: 'GREEN', distance: 2.8, wait_time: 0, operator: 'ABB', source: 'fallback' },
+  { id: 6, name: 'Hubject Charging MG Road', lat: 12.9752, lng: 77.6060, load: 200, capacity: 300, status: 'YELLOW', distance: 1.5, wait_time: 0, operator: 'Hubject', source: 'fallback' },
+  { id: 7, name: 'Tata Power Forum', lat: 12.9170, lng: 77.6250, load: 250, capacity: 300, status: 'RED', distance: 3.2, wait_time: 2.0, operator: 'Tata Power', source: 'fallback' },
+  { id: 8, name: 'Volta Charging Manyata', lat: 13.0350, lng: 77.5990, load: 75, capacity: 300, status: 'GREEN', distance: 6.1, wait_time: 0, operator: 'Volta', source: 'fallback' },
+];
+
 // Fallback data
 const fallbackState: SystemState = {
   zones: [
@@ -56,7 +68,7 @@ const fallbackState: SystemState = {
     { id: 4, name: 'Electronic City', lat: 12.8399, lng: 77.6770, capacity: 1000, current_demand: 380, status: 'GREEN' },
     { id: 5, name: 'Jayanagar', lat: 12.9299, lng: 77.5826, capacity: 1000, current_demand: 420, status: 'GREEN' },
   ],
-  stations: [],
+  stations: fallbackStations,
   total_demand: 2450,
   peak_load: 680,
   optimized_peak: 2000,

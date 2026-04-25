@@ -123,6 +123,7 @@ export default function Dashboard() {
   const [showLocationSelector, setShowLocationSelector] = useState(false);
   const [selectedStation, setSelectedStation] = useState<any>(null);
   const [notification, setNotification] = useState<{message: string; type: 'info' | 'success'} | null>(null);
+  const [mapError, setMapError] = useState(false);
   const [viewState, setViewState] = useState({
     longitude: BENGALURU_CENTER.lng,
     latitude: BENGALURU_CENTER.lat,
@@ -236,25 +237,21 @@ export default function Dashboard() {
   const sortedStations = [...stations].sort((a, b) => a.distance - b.distance);
   const bestOption = sortedStations.find(s => s.status === 'GREEN') || sortedStations[0];
 
-  // Generate prediction graph data
-  const generatePredictionData = () => {
+  // Generate prediction graph data from real zone demand
+  const predictionData = zones.length > 0 ? zones.map((zone, i) => {
     const now = new Date();
-    const data = [];
-    for (let i = 0; i < 24; i++) {
-      const hour = (now.getHours() + i) % 24;
-      const base = 200 + Math.sin((hour / 24) * Math.PI * 2) * 300 + 400;
-      const noise = (Math.random() - 0.5) * 50;
-      data.push({
-        hour: i,
-        time: `${hour}:00`,
-        demand: Math.max(100, base + noise),
-        confidence: 0.92 - (i * 0.02)
-      });
-    }
-    return data;
-  };
-
-  const predictionData = useState(generatePredictionData)[0];
+    const hour = (now.getHours() + i) % 24;
+    // Realistic curves based on zone demand
+    const baseDemand = zone.current_demand || 400;
+    const peakMultiplier = (hour >= 17 && hour <= 21) ? 1.3 : (hour >= 6 && hour <= 9) ? 1.1 : 0.8;
+    const demand = baseDemand * peakMultiplier + Math.sin(i * 0.5) * 50;
+    return {
+      hour: i,
+      time: `${hour}:00`,
+      demand: Math.max(100, demand),
+      confidence: Math.max(0.6, 0.92 - (i * 0.02))
+    };
+  }) : [];
 
   // Current zone data
   const selectedZone = zones.find(z => z.id === selectedZoneId);
@@ -406,49 +403,59 @@ export default function Dashboard() {
               )}
             </div>
             
-            <div className="flex-1 bg-black/50 w-full">
-              <Map ref={mapRef} {...viewState} onMove={evt => setViewState(evt.viewState)} mapStyle={MAP_STYLE} attributionControl={false}>
-                <NavigationControl position="bottom-right" />
+<div className="flex-1 bg-black/50 w-full relative">
+              {mapError ? (
+                <div className="flex-1 flex items-center justify-center bg-slate-900/80">
+                  <div className="text-center p-6">
+                    <MapPin size={48} className="text-slate-600 mx-auto mb-3" />
+                    <p className="text-sm text-slate-400 mb-2">Map unavailable</p>
+                    <p className="text-xs text-slate-500">Loading map tiles...</p>
+                  </div>
+                </div>
+              ) : (
+                <Map ref={mapRef} {...viewState} onMove={evt => setViewState(evt.viewState)} mapStyle={MAP_STYLE} attributionControl={false} onError={() => setMapError(true)}>
+                  <NavigationControl position="bottom-right" />
 
-                {/* User Location */}
-                {userLocation && !isDemoMode && (
-                  <Marker longitude={userLocation.lng} latitude={userLocation.lat} anchor="center">
-                    <div className="relative">
-                      <div className="absolute inset-0 h-4 w-4 bg-blue-500 rounded-full animate-ping opacity-50"></div>
-                      <div className="relative h-3 w-3 bg-blue-500 rounded-full border-2 border-white shadow-lg"></div>
-                    </div>
-                  </Marker>
-                )}
-
-                {/* Zone Markers */}
-                {zones.map(zone => {
-                  const isActive = zone.id === selectedZoneId;
-                  return (
-                    <Marker key={zone.id} longitude={zone.lng} latitude={zone.lat} anchor="bottom" onClick={(e) => { e.originalEvent.stopPropagation(); setSelectedZoneId(zone.id); }}>
-                      <div className={`relative cursor-pointer ${isActive ? 'scale-125' : 'scale-100'}`}>
-                        <MapPin size={24} fill={getZoneColor(zone.id)} className="text-slate-400" />
+                  {/* User Location */}
+                  {userLocation && !isDemoMode && (
+                    <Marker longitude={userLocation.lng} latitude={userLocation.lat} anchor="center">
+                      <div className="relative">
+                        <div className="absolute inset-0 h-4 w-4 bg-blue-500 rounded-full animate-ping opacity-50"></div>
+                        <div className="relative h-3 w-3 bg-blue-500 rounded-full border-2 border-white shadow-lg"></div>
                       </div>
                     </Marker>
-                  );
-                })}
+                  )}
 
-                {/* Station Markers */}
-                {stations.map(station => {
-                  const color = station.status === 'RED' ? '#ef4444' : station.status === 'YELLOW' ? '#eab308' : '#10b981';
-                  return (
-                    <Marker key={station.id} longitude={station.lng} latitude={station.lat} anchor="center" onClick={(e) => { e.originalEvent.stopPropagation(); handleStationClick(station); }}>
-                      <div className={`relative cursor-pointer z-10 ${selectedStation?.id === station.id ? 'scale-125' : 'scale-100'}`}>
-                        <div className="h-6 w-6 rounded-md border-2 border-white shadow-lg flex items-center justify-center hover:scale-110 transition-transform" style={{ backgroundColor: color }}>
-                          <Zap size={12} className="text-white" />
+                  {/* Zone Markers */}
+                  {zones.map(zone => {
+                    const isActive = zone.id === selectedZoneId;
+                    return (
+                      <Marker key={zone.id} longitude={zone.lng} latitude={zone.lat} anchor="bottom" onClick={(e) => { e.originalEvent.stopPropagation(); setSelectedZoneId(zone.id); }}>
+                        <div className={`relative cursor-pointer ${isActive ? 'scale-125' : 'scale-100'}`}>
+                          <MapPin size={24} fill={getZoneColor(zone.id)} className="text-slate-400" />
                         </div>
-                      </div>
-                    </Marker>
-                  );
-                })}
-              </Map>
+                      </Marker>
+                    );
+                  })}
 
-              {/* Station Popup */}
-              {selectedStation && (
+                  {/* Station Markers */}
+                  {stations.map(station => {
+                    const color = station.status === 'RED' ? '#ef4444' : station.status === 'YELLOW' ? '#eab308' : '#10b981';
+                    return (
+                      <Marker key={station.id} longitude={station.lng} latitude={station.lat} anchor="center" onClick={(e) => { e.originalEvent.stopPropagation(); handleStationClick(station); }}>
+                        <div className={`relative cursor-pointer z-10 ${selectedStation?.id === station.id ? 'scale-125' : 'scale-100'}`}>
+                          <div className="h-6 w-6 rounded-md border-2 border-white shadow-lg flex items-center justify-center hover:scale-110 transition-transform" style={{ backgroundColor: color }}>
+                            <Zap size={12} className="text-white" />
+                          </div>
+                        </div>
+                      </Marker>
+                    );
+                  })}
+                </Map>
+              )}
+              
+              {/* Station Popup - show when map loaded */}
+              {selectedStation && !mapError && (
                 <div className="absolute bottom-20 left-4 right-4 z-20">
                   <div className="bg-slate-900/95 backdrop-blur-xl border border-slate-700 rounded-xl p-4 shadow-2xl">
                     <div className="flex justify-between items-start mb-3">
