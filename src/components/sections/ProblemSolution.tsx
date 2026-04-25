@@ -47,7 +47,7 @@ export default function ProblemSolution() {
         {/* Stacked Cards Container */}
         <div className="relative w-full pb-[20vh]">
           {cards.map((card, i) => (
-            <Card key={i} card={card} i={i} total={cards.length} />
+            <Card key={i} card={card} i={i} />
           ))}
         </div>
       </div>
@@ -55,7 +55,7 @@ export default function ProblemSolution() {
   )
 }
 
-function Card({ card, i, total }: { card: any, i: number, total: number }) {
+function Card({ card, i }: { card: any, i: number }) {
   return (
     <div 
       className="sticky top-32 w-full flex justify-center mt-12"

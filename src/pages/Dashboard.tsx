@@ -87,12 +87,12 @@ export default function Dashboard() {
   const [realtime, setRealtime] = useState<RealtimeSnapshot[]>([]);
   const [forecasts, setForecasts] = useState<Record<number, Forecast>>({});
   const [impacts, setImpacts] = useState<Record<number, OptimizationImpact>>({});
-  const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
+  const [, setRecommendations] = useState<Recommendation[]>([]);
   const [nearbyStations, setNearbyStations] = useState<NearbyStation[]>([]);
-  const [demoScenario, setDemoScenario] = useState<DemoScenario | null>(null);
+  const [, setDemoScenario] = useState<DemoScenario | null>(null);
   
   // Advanced State
-  const [dataStatus, setDataStatus] = useState<DataStatus | null>(null);
+  const [, setDataStatus] = useState<DataStatus | null>(null);
   const [realisticImpact, setRealisticImpact] = useState<RealisticImpact | null>(null);
   const [advancedLocations, setAdvancedLocations] = useState<AdvancedLocation[]>([]);
   const [failureScenario, setFailureScenario] = useState<FailureScenario | null>(null);
@@ -101,12 +101,12 @@ export default function Dashboard() {
   
   // Validation State
   const [modelMetrics, setModelMetrics] = useState<ModelMetrics | null>(null);
-  const [sensitivityData, setSensitivityData] = useState<SensitivityPoint[]>([]);
+  const [, setSensitivityData] = useState<SensitivityPoint[]>([]);
   const [robustnessData, setRobustnessData] = useState<RobustnessPoint[]>([]);
   
   const [selectedZoneId, setSelectedZoneId] = useState<number>(1);
   const [activeTab, setActiveTab] = useState<'insights'|'impact'|'planning'|'baselines'|'policy'|'failure'|'validation'>('insights');
-  const [timeSlider, setTimeSlider] = useState(18); // default to 6 PM
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [userLocation, setUserLocation] = useState<{lat: number, lng: number} | null>(null);
   const [userCity, setUserCity] = useState<string>("Bengaluru");
 
@@ -122,14 +122,16 @@ export default function Dashboard() {
             setUserLocation({ lat, lng });
             setUserCity(geo.city);
           } else {
-            setUserLocation({ lat: 12.97, lng: 77.59 });
-            setUserCity("Bengaluru");
+            setUserLocation({ lat: 12.97, lng: 77.59 }); // Universal Bengaluru location
+            setUserCity(`Outside Bengaluru (${geo.city || 'Global'})`);
           }
         } catch (e) {
           setUserLocation({ lat: 12.97, lng: 77.59 });
+          setUserCity("Unknown Location");
         }
       }, () => {
         setUserLocation({ lat: 12.97, lng: 77.59 });
+        setUserCity("Location Disabled");
       });
     } else {
       setUserLocation({ lat: 12.97, lng: 77.59 });
@@ -255,22 +257,37 @@ export default function Dashboard() {
           </nav>
         </div>
 
-        <div className="flex items-center gap-4">
-          <div className={`flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold ${dataStatus?.is_real_data ? 'border-indigo-500/30 bg-indigo-500/10 text-indigo-300' : 'border-slate-500/30 bg-slate-500/10 text-slate-300'}`}>
-            {dataStatus?.is_real_data ? 'Running on Real Data' : 'Running on Simulated Data'}
+        <div className="flex items-center gap-4 relative">
+          <div className="relative">
+            <button 
+              onClick={() => setIsProfileOpen(!isProfileOpen)}
+              className="flex items-center gap-2 text-sm font-medium text-slate-300 hover:text-white transition-colors border border-slate-700 bg-slate-800/50 px-4 py-2 rounded-lg"
+            >
+              Profile
+              <ChevronRight size={14} className={`transition-transform ${isProfileOpen ? 'rotate-90' : ''}`} />
+            </button>
+            
+            {isProfileOpen && (
+              <div className="absolute right-0 mt-2 w-48 rounded-xl border border-slate-700 bg-slate-900 shadow-xl overflow-hidden py-1 z-50">
+                <div className="px-4 py-2 border-b border-slate-800 mb-1">
+                  <p className="text-xs text-slate-400 truncate">{email}</p>
+                </div>
+                <button className="w-full text-left px-4 py-2 text-sm text-slate-300 hover:bg-slate-800 hover:text-white transition-colors">
+                  My Profile
+                </button>
+                <button className="w-full text-left px-4 py-2 text-sm text-slate-300 hover:bg-slate-800 hover:text-white transition-colors">
+                  Settings
+                </button>
+                <button 
+                  onClick={logout} 
+                  className="w-full text-left px-4 py-2 text-sm text-rose-400 hover:bg-rose-500/10 transition-colors flex items-center justify-between"
+                >
+                  Logout
+                  <LogOut size={14} />
+                </button>
+              </div>
+            )}
           </div>
-          <div className="flex items-center gap-2 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5 text-xs text-emerald-300">
-            <span className="relative flex h-2 w-2">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75"></span>
-              <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500"></span>
-            </span>
-            System Healthy
-          </div>
-          <div className="h-4 w-px bg-slate-700" />
-          <span className="text-sm font-medium text-slate-300">{email}</span>
-          <button onClick={logout} className="text-slate-400 hover:text-white">
-            <LogOut size={16} />
-          </button>
         </div>
       </header>
 
@@ -325,7 +342,9 @@ export default function Dashboard() {
             <div className="absolute top-4 left-4 z-10 flex gap-2">
               <div className="rounded-lg bg-[#0B0F14]/80 backdrop-blur-md border border-white/10 p-2 shadow-lg flex items-center gap-2">
                 <MapIcon size={16} className="text-slate-400" />
-                <span className="text-xs font-semibold text-white uppercase tracking-wider">Bengaluru Grid Focus</span>
+                <span className="text-xs font-semibold text-white uppercase tracking-wider">
+                  {userCity.includes('Outside') || userCity === 'Location Disabled' ? 'Universal Demo Mode: Bengaluru EV Grid' : `Grid Focus: ${userCity}`}
+                </span>
               </div>
             </div>
             
@@ -398,9 +417,11 @@ export default function Dashboard() {
                           className={`h-4 w-4 rounded-md border-2 border-[#0B0F14] shadow-sm transition-transform ${st.is_best_option ? 'animate-bounce scale-125' : ''}`}
                           style={{ backgroundColor: color }}
                         />
-                        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none w-48 z-50">
-                          <div className="bg-slate-900/95 backdrop-blur-md border border-slate-700 text-white rounded-lg shadow-2xl p-3">
+                        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none w-56 z-50">
+                          <div className="bg-slate-900/95 backdrop-blur-md border border-slate-700 text-white rounded-lg shadow-2xl p-3 overflow-hidden">
+                            <div className="h-20 w-full mb-3 rounded-md bg-slate-800 bg-[url('https://images.unsplash.com/photo-1593941707882-a5bba14938cb?auto=format&fit=crop&w=300&q=80')] bg-cover bg-center" />
                             <p className="font-bold text-sm mb-1 text-slate-100">{st.name}</p>
+                            <p className="text-[10px] text-slate-400 mb-2">{st.distance_km} km away from your location</p>
                             <div className="space-y-1">
                               <div className="flex justify-between text-xs">
                                 <span className="text-slate-400">Load</span>
@@ -431,19 +452,6 @@ export default function Dashboard() {
                 })}
 
               </Map>
-            </div>
-
-            {/* Time Slider */}
-            <div className="h-16 border-t border-slate-800 bg-[#0B0F14]/90 backdrop-blur-md px-6 flex items-center gap-4">
-              <span className="text-xs font-semibold text-slate-400 w-12">{timeSlider}:00</span>
-              <input 
-                type="range" 
-                min="0" max="23" 
-                value={timeSlider} 
-                onChange={(e) => setTimeSlider(Number(e.target.value))}
-                className="w-full h-1 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-cyan-400"
-              />
-              <span className="text-xs font-semibold text-slate-400 w-12 text-right whitespace-nowrap">24h Sim</span>
             </div>
           </div>
 
