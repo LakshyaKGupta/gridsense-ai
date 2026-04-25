@@ -28,6 +28,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
+    if (!auth) {
+      setIsLoading(false);
+      return;
+    }
     // Listen to Firebase auth state — this fires on page load & on sign-in/out
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
@@ -53,7 +57,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   };
 
   const logout = async () => {
-    await signOut(auth);
+    if (auth) {
+      await signOut(auth);
+    }
     setToken(null);
     setEmail(null);
     setFirebaseUser(null);
@@ -76,8 +82,12 @@ export const useAuth = () => {
 
 // ─── Exported Firebase auth helpers (used directly in Login.tsx) ──────────────
 
-export const firebaseRegister = (email: string, password: string) =>
-  createUserWithEmailAndPassword(auth, email, password);
+export const firebaseRegister = (email: string, password: string) => {
+  if (!auth) throw new Error('Firebase not configured');
+  return createUserWithEmailAndPassword(auth, email, password);
+};
 
-export const firebaseLogin = (email: string, password: string) =>
-  signInWithEmailAndPassword(auth, email, password);
+export const firebaseLogin = (email: string, password: string) => {
+  if (!auth) throw new Error('Firebase not configured');
+  return signInWithEmailAndPassword(auth, email, password);
+};

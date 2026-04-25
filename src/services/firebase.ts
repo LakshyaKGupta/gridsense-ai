@@ -12,8 +12,11 @@ const firebaseConfig = {
   appId:             import.meta.env.VITE_FIREBASE_APP_ID,
 };
 
-// Avoid re-initialising during hot-reload
-const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
+// Check if all required config values are present
+const isConfigValid = Object.values(firebaseConfig).every(value => value && value.trim() !== '');
 
-export const auth = getAuth(app);
+// Avoid re-initialising during hot-reload
+const app = isConfigValid && getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
+
+export const auth = isConfigValid ? getAuth(app) : null;
 export default app;
