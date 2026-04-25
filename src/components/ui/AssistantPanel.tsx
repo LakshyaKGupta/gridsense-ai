@@ -1,18 +1,26 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { MessageSquare, Send, X, Bot } from 'lucide-react';
-import { NearbyStation } from '../../services/api';
+import { useSystemState } from '../../context/SystemStateContext';
+import type { Station } from '../../system/stateEngine';
 
 interface AssistantPanelProps {
-  nearbyStations: NearbyStation[];
+  nearbyStations: Station[];
   selectedZone: number;
 }
 
-export default function AssistantPanel({ nearbyStations, selectedZone }: AssistantPanelProps) {
+export default function AssistantPanel({ }: AssistantPanelProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<{role: 'user'|'assistant', text: string}[]>([
-    { role: 'assistant', text: 'Hi! I am your GridSense AI assistant. Ask me where to charge or what the grid status is.' }
+    { role: 'assistant', text: 'Hi! Ask me about stations or grid status.' }
   ]);
   const [input, setInput] = useState('');
+  const systemState = useSystemState();
+
+  useEffect(() => {
+    setMessages([
+      { role: 'assistant', text: 'Hi! Ask me about stations or grid status.' }
+    ]);
+  }, []);
 
   const handleSend = () => {
     if (!input.trim()) return;
@@ -21,33 +29,51 @@ export default function AssistantPanel({ nearbyStations, selectedZone }: Assista
     setMessages(prev => [...prev, { role: 'user', text: userMsg }]);
     setInput('');
     
-    // Simple Rule-based logic
     setTimeout(() => {
-      let response = "I'm analyzing the grid to find the best answer.";
+      let response = "Analyzing grid...";
       const lowerInput = userMsg.toLowerCase();
+      const stations = systemState.stations;
+      const alerts = systemState.alerts;
+      const totalDemand = systemState.demand.reduce((acc, d) => acc + d.demand, 0);
       
       if (lowerInput.includes('where') && lowerInput.includes('charge')) {
-        const best = nearbyStations.find(s => s.is_best_option);
+        const sortedByDistance = [...stations].sort((a, b) => a.distance - b.distance);
+        const best = sortedByDistance.find(s => s.status !== 'RED') || sortedByDistance[0];
         if (best) {
-          response = `I recommend heading to **${best.name}**. It's only ${best.distance_km}km away and currently has ${best.queue_time && best.queue_time > 0 ? best.queue_time + ' min wait' : 'no wait time'}. It's running at optimal capacity.`;
-        } else {
-          response = "I don't see any nearby stations right now. Make sure your location is enabled!";
+          response = `I recommend **${best.name}**. It's ${best.distance.toFixed(1)}km away with ${best.wait_time > 0 ? best.wait_time + ' min wait' : 'no wait'}. Load: ${Math.round(best.load)}/${best.capacity}.`;
         }
-      } else if (lowerInput.includes('overload') || lowerInput.includes('strain')) {
-        const redStations = nearbyStations.filter(s => s.status === 'RED');
+      } else if (lowerInput.includes('overload') || lowerInput.includes('busy')) {
+        const redStations = stations.filter(s => s.status === 'RED');
         if (redStations.length > 0) {
-          response = `Yes, I detect high strain at: ${redStations.map(s => s.name).join(', ')}. Please avoid these locations if possible.`;
+          response = `Busy stations: ${redStations.map(s => s.name).join(', ')}. Consider alternatives.`;
         } else {
-          response = "Currently, all nearby infrastructure looks stable. No immediate overloads detected.";
+          response = "All stations have available capacity.";
         }
-      } else if (lowerInput.includes('8 pm') || lowerInput.includes('peak')) {
-        response = `At 8 PM, we expect a major demand surge across Zone ${selectedZone}. Our AI is automatically shifting non-urgent loads to 11 PM to prevent transformer failures.`;
+      } else if (lowerInput.includes('best') || lowerInput.includes('fastest')) {
+        const sortedByLoad = [...stations].sort((a, b) => (a.load/a.capacity) - (b.load/b.capacity));
+        const best = sortedByLoad[0];
+        if (best) {
+          response = `Best option is **${best.name}** - only ${Math.round(best.load/best.capacity*100)}% utilized.`;
+        }
+      } else if (lowerInput.includes('demand') || lowerInput.includes('load') || lowerInput.includes('usage')) {
+        response = `Current total grid demand: ${totalDemand.toFixed(0)} kW across ${stations.length} stations.`;
+      } else if (lowerInput.includes('status')) {
+        const green = stations.filter(s => s.status === 'GREEN').length;
+        const yellow = stations.filter(s => s.status === 'YELLOW').length;
+        const red = stations.filter(s => s.status === 'RED').length;
+        response = `Status: ${green} Available, ${yellow} Moderate, ${red} Busy.`;
+      } else if (lowerInput.includes('alert')) {
+        if (alerts.length > 0) {
+          response = `Alerts: ${alerts.map(a => a.message).join(' | ')}`;
+        } else {
+          response = "No active alerts.";
+        }
       } else {
-        response = "I'm a specialized AI for grid and charging optimization. Try asking 'Where should I charge now?' or 'Which zone is overloaded?'";
+        response = "Try: 'Where to charge?', 'Which stations are busy?', or 'Status?'";
       }
       
       setMessages(prev => [...prev, { role: 'assistant', text: response }]);
-    }, 600);
+    }, 400);
   };
 
   if (!isOpen) {
@@ -63,17 +89,15 @@ export default function AssistantPanel({ nearbyStations, selectedZone }: Assista
 
   return (
     <div className="fixed bottom-6 right-6 w-80 bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl overflow-hidden z-50 flex flex-col h-96 animate-in slide-in-from-bottom-5">
-      {/* Header */}
       <div className="bg-slate-800 p-3 border-b border-slate-700 flex justify-between items-center">
         <div className="flex items-center gap-2 text-white font-bold text-sm">
-          <Bot size={16} className="text-cyan-400" /> GridSense Assistant
+          <Bot size={16} className="text-cyan-400" /> GridSense AI
         </div>
         <button onClick={() => setIsOpen(false)} className="text-slate-400 hover:text-white">
           <X size={16} />
         </button>
       </div>
       
-      {/* Messages */}
       <div className="flex-1 p-3 overflow-y-auto space-y-3">
         {messages.map((msg, i) => (
           <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
@@ -84,7 +108,6 @@ export default function AssistantPanel({ nearbyStations, selectedZone }: Assista
         ))}
       </div>
       
-      {/* Input */}
       <div className="p-3 border-t border-slate-800 bg-slate-900/50">
         <form onSubmit={(e) => { e.preventDefault(); handleSend(); }} className="flex gap-2">
           <input 

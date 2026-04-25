@@ -7,12 +7,17 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
+import Settings from './pages/Settings'
+import Profile from './pages/Profile'
+import { SystemStateProvider } from './context/SystemStateContext'
+
 
 const ProblemSolution = lazy(() => import('./components/sections/ProblemSolution'))
 const HowItWorks = lazy(() => import('./components/sections/HowItWorks'))
 const LiveDemo = lazy(() => import('./components/sections/LiveDemo'))
 const ImpactMetrics = lazy(() => import('./components/sections/ImpactMetrics'))
 const CTA = lazy(() => import('./components/sections/CTA'))
+const Features = lazy(() => import('./components/sections/Features'))
 
 function Landing() {
   return (
@@ -25,6 +30,11 @@ function Landing() {
       {/* 2. Problem & Solution */}
       <Suspense fallback={<div>Loading...</div>}>
         <ProblemSolution />
+      </Suspense>
+
+      {/* 2b. Features */}
+      <Suspense fallback={<div>Loading...</div>}>
+        <Features />
       </Suspense>
 
       {/* 3. How It Works */}
@@ -77,6 +87,8 @@ function AppRoutes() {
       <Route path="/" element={<Landing />} />
       <Route path="/login" element={token ? <Navigate to="/dashboard" /> : <Login />} />
       <Route path="/signup" element={<Navigate to="/login?mode=signup" replace />} />
+      <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
+      <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
       <Route
         path="/dashboard"
         element={
@@ -95,7 +107,9 @@ export default function App() {
     <BrowserRouter>
       <AuthProvider>
         <Cursor />
-        <AppRoutes />
+        <SystemStateProvider>
+          <AppRoutes />
+        </SystemStateProvider>
       </AuthProvider>
     </BrowserRouter>
   )

@@ -2,7 +2,7 @@ import { useAuth } from '../../context/AuthContext';
 import { Link, useNavigate } from 'react-router-dom';
 
 export default function Navbar() {
-  const { token, logout, email } = useAuth();
+  const { token, logout } = useAuth();
   const navigate = useNavigate();
 
   const handleLogout = () => {
@@ -20,7 +20,8 @@ export default function Navbar() {
         <>
           <ul className="nav-links">
             <li><Link to="/dashboard" id="nav-demo">Dashboard</Link></li>
-            <li><span id="nav-user" className="text-white/70">{email}</span></li>
+            <li><Link to="/profile" id="nav-profile">Profile</Link></li>
+            <li><Link to="/settings" id="nav-settings">Settings</Link></li>
           </ul>
           <div className="nav-end">
             <button

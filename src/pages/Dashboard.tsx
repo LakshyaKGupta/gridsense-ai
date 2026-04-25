@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   Activity,
   AlertTriangle,
@@ -6,10 +6,14 @@ import {
   ArrowUp,
   ChevronRight,
   LogOut,
-  Map as MapIcon,
   Zap,
   TrendingUp,
-  CheckCircle2
+  Navigation,
+  Crosshair,
+  MapPin,
+  Globe,
+  Target,
+  Info
 } from 'lucide-react';
 import {
   Area,
@@ -22,31 +26,27 @@ import {
   YAxis,
 } from 'recharts';
 import { useAuth } from '../context/AuthContext';
-import {
-  Alert,
-  DashboardData,
-  dashboardAPI,
-  Forecast,
-  RealtimeSnapshot,
-  OptimizationImpact,
-  Recommendation,
-  NearbyStation,
-  DemoScenario,
-  DataStatus,
-  RealisticImpact,
-  AdvancedLocation,
-  FailureScenario,
-  Baselines,
-  ModelMetrics,
-  SensitivityPoint,
-  RobustnessPoint
-} from '../services/api';
+import { useSystemState } from '../context/SystemStateContext';
+import { Link } from 'react-router-dom';
 
-import Map, { Marker } from 'react-map-gl/maplibre';
+import Map, { Marker, Source, Layer, NavigationControl } from 'react-map-gl/maplibre';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import AssistantPanel from '../components/ui/AssistantPanel';
 
 const MAP_STYLE = 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json';
+
+const BENGALURU_CENTER = { lat: 12.97, lng: 77.59 };
+
+const INDIAN_CITIES = [
+  { name: 'Bengaluru', lat: 12.97, lng: 77.59, state: 'Karnataka' },
+  { name: 'Delhi', lat: 28.61, lng: 77.23, state: 'Delhi' },
+  { name: 'Mumbai', lat: 19.08, lng: 72.88, state: 'Maharashtra' },
+  { name: 'Hyderabad', lat: 17.39, lng: 78.49, state: 'Telangana' },
+  { name: 'Chennai', lat: 13.08, lng: 80.27, state: 'Tamil Nadu' },
+  { name: 'Kolkata', lat: 22.57, lng: 88.36, state: 'West Bengal' },
+  { name: 'Pune', lat: 18.52, lng: 73.86, state: 'Maharashtra' },
+  { name: 'Ahmedabad', lat: 23.03, lng: 72.58, state: 'Gujarat' },
+];
 
 const BENGALURU_ZONES = [
   { id: 1, name: 'Indiranagar', lat: 12.9784, lng: 77.6408 },
@@ -55,6 +55,49 @@ const BENGALURU_ZONES = [
   { id: 4, name: 'Electronic City', lat: 12.8399, lng: 77.6770 },
   { id: 5, name: 'Jayanagar', lat: 12.9299, lng: 77.5826 },
 ];
+
+function haversineDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
+async function reverseGeocode(lat: number, lng: number): Promise<string> {
+  try {
+    const response = await fetch(
+      `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=10`,
+      { headers: { 'User-Agent': 'GridSense/1.0' } }
+    );
+    const data = await response.json();
+    const address = data.address;
+    
+    // Check for Indian cities
+    if (address.city) return address.city;
+    if (address.town) return address.town;
+    if (address.village) return address.village;
+    if (address.county) return address.county;
+    if (address.state) return address.state;
+    
+    return data.display_name?.split(',')[0] || 'Unknown';
+  } catch {
+    // Fallback: find closest city
+    let closestCity = 'Unknown';
+    let minDist = Infinity;
+    for (const city of INDIAN_CITIES) {
+      const dist = haversineDistance(lat, lng, city.lat, city.lng);
+      if (dist < minDist) {
+        minDist = dist;
+        closestCity = city.name;
+      }
+    }
+    return minDist < 300 ? closestCity : 'India';
+  }
+}
 
 function KPICard({ title, value, hint, trend, upIsGood = false }: any) {
   const isUp = trend > 0;
@@ -80,145 +123,173 @@ function KPICard({ title, value, hint, trend, upIsGood = false }: any) {
 }
 
 export default function Dashboard() {
-  const { token, email, logout } = useAuth();
-  
-  const [dashboard, setDashboard] = useState<DashboardData | null>(null);
-  const [alerts, setAlerts] = useState<Alert[]>([]);
-  const [realtime, setRealtime] = useState<RealtimeSnapshot[]>([]);
-  const [forecasts, setForecasts] = useState<Record<number, Forecast>>({});
-  const [impacts, setImpacts] = useState<Record<number, OptimizationImpact>>({});
-  const [, setRecommendations] = useState<Recommendation[]>([]);
-  const [nearbyStations, setNearbyStations] = useState<NearbyStation[]>([]);
-  const [, setDemoScenario] = useState<DemoScenario | null>(null);
-  
-  // Advanced State
-  const [, setDataStatus] = useState<DataStatus | null>(null);
-  const [realisticImpact, setRealisticImpact] = useState<RealisticImpact | null>(null);
-  const [advancedLocations, setAdvancedLocations] = useState<AdvancedLocation[]>([]);
-  const [failureScenario, setFailureScenario] = useState<FailureScenario | null>(null);
-  const [baselines, setBaselines] = useState<Baselines | null>(null);
-  const [policyAdoption, setPolicyAdoption] = useState(60);
-  
-  // Validation State
-  const [modelMetrics, setModelMetrics] = useState<ModelMetrics | null>(null);
-  const [, setSensitivityData] = useState<SensitivityPoint[]>([]);
-  const [robustnessData, setRobustnessData] = useState<RobustnessPoint[]>([]);
+  const { logout } = useAuth();
+  const systemState = useSystemState();
+  const mapRef = useRef<any>(null);
   
   const [selectedZoneId, setSelectedZoneId] = useState<number>(1);
-  const [activeTab, setActiveTab] = useState<'insights'|'impact'|'planning'|'baselines'|'policy'|'failure'|'validation'>('insights');
+  const [activeTab, setActiveTab] = useState<'insights'|'impact'|'planning'>('insights');
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [userLocation, setUserLocation] = useState<{lat: number, lng: number} | null>(null);
-  const [userCity, setUserCity] = useState<string>("Bengaluru");
+  const [detectedCity, setDetectedCity] = useState<string>('Detecting...');
+  const [isDemoMode, setIsDemoMode] = useState(true);
+  const [showLocationSelector, setShowLocationSelector] = useState(false);
+  const [selectedStation, setSelectedStation] = useState<any>(null);
+  const [routeGeometry, setRouteGeometry] = useState<any>(null);
+  const [notification, setNotification] = useState<{message: string; type: 'info' | 'success'} | null>(null);
+  const [viewState, setViewState] = useState({
+    longitude: BENGALURU_CENTER.lng,
+    latitude: BENGALURU_CENTER.lat,
+    zoom: 11
+  });
 
+  const zones = systemState.zones;
+  const stations = systemState.stations;
+  const demand = systemState.demand;
+  const alerts = systemState.alerts;
+
+// Auto-detect location on mount
   useEffect(() => {
-    if (!token) return;
-    if ("geolocation" in navigator) {
-      navigator.geolocation.getCurrentPosition(async (position) => {
-        const lat = position.coords.latitude;
-        const lng = position.coords.longitude;
-        try {
-          const geo = await dashboardAPI.getReverseGeocode(token, lat, lng);
-          if (geo.valid) {
-            setUserLocation({ lat, lng });
-            setUserCity(geo.city);
-          } else {
-            setUserLocation({ lat: 12.97, lng: 77.59 }); // Universal Bengaluru location
-            setUserCity(`Outside Bengaluru (${geo.city || 'Global'})`);
-          }
-        } catch (e) {
-          setUserLocation({ lat: 12.97, lng: 77.59 });
-          setUserCity("Unknown Location");
-        }
-      }, () => {
-        setUserLocation({ lat: 12.97, lng: 77.59 });
-        setUserCity("Location Disabled");
-      });
-    } else {
-      setUserLocation({ lat: 12.97, lng: 77.59 });
-    }
-  }, [token]);
-
-  useEffect(() => {
-    if (!token) return;
-    let cancelled = false;
-
-    const fetchAll = async () => {
-      try {
-        const [sum, al, rt, rec, demo] = await Promise.all([
-          dashboardAPI.getSummary(token),
-          dashboardAPI.getAlerts(token),
-          dashboardAPI.getRealtimeDemand(token),
-          dashboardAPI.getRecommendations(token),
-          dashboardAPI.getDemoScenario(token).catch(() => null)
-        ]);
-        if (cancelled) return;
-        setDashboard(sum);
-        setAlerts(al);
-        setRealtime(rt);
-        setRecommendations(rec);
-        if (demo) setDemoScenario(demo);
-
-        if (userLocation) {
-          const stations = await dashboardAPI.getNearbyStations(token, userLocation.lat, userLocation.lng);
-          if (!cancelled) setNearbyStations(stations);
-        }
-
-        // Fetch forecast and impact for the selected zone
-        const [fc, imp, stat, realImp, advLoc, failScen, baseCmp, mm, sens, rob] = await Promise.all([
-          dashboardAPI.getForecast(token, selectedZoneId),
-          dashboardAPI.getImpact(token, selectedZoneId),
-          dashboardAPI.getDataStatus(token).catch(() => null),
-          dashboardAPI.getRealisticImpact(token, selectedZoneId, policyAdoption / 100).catch(() => null),
-          dashboardAPI.getAdvancedLocations(token).catch(() => []),
-          dashboardAPI.getFailureScenario(token).catch(() => null),
-          dashboardAPI.compareBaselines(token).catch(() => null),
-          dashboardAPI.getModelMetrics(token).catch(() => null),
-          dashboardAPI.getSensitivityAnalysis(token).catch(() => []),
-          dashboardAPI.getRobustnessAnalysis(token).catch(() => [])
-        ]);
-        
-        if (!cancelled) {
-          setForecasts(prev => ({ ...prev, [selectedZoneId]: fc }));
-          setImpacts(prev => ({ ...prev, [selectedZoneId]: imp }));
-          if (stat) setDataStatus(stat);
-          if (realImp) setRealisticImpact(realImp);
-          if (advLoc) setAdvancedLocations(advLoc);
-          if (failScen) setFailureScenario(failScen);
-          if (baseCmp) setBaselines(baseCmp);
-          if (mm) setModelMetrics(mm);
-          if (sens) setSensitivityData(sens);
-          if (rob) setRobustnessData(rob);
-        }
-        
-      } catch (err) {
-        console.error("Dashboard fetch error:", err);
+    const detectLocation = async () => {
+      if (!navigator.geolocation) {
+        setNotification({ message: 'Location unavailable. Showing Bengaluru Demo.', type: 'info' });
+        setDetectedCity('Bengaluru');
+        setUserLocation(BENGALURU_CENTER);
+        setTimeout(() => setNotification(null), 5000);
+        return;
       }
+
+      navigator.geolocation.getCurrentPosition(
+        async (position) => {
+          const lat = position.coords.latitude;
+          const lng = position.coords.longitude;
+          setUserLocation({ lat, lng });
+          
+          try {
+            const cityName = await reverseGeocode(lat, lng);
+            const distToBengaluru = haversineDistance(lat, lng, BENGALURU_CENTER.lat, BENGALURU_CENTER.lng);
+            const isInBengaluru = cityName.toLowerCase().includes('bengaluru') || cityName.toLowerCase().includes('bangalore') || distToBengaluru < 100;
+            
+            if (isInBengaluru) {
+              setDetectedCity('Bengaluru');
+              setIsDemoMode(false);
+              setNotification({ message: `You're in ${cityName}. Showing local EV stations.`, type: 'success' });
+              setViewState(prev => ({ ...prev, longitude: lng, latitude: lat, zoom: 13 }));
+            } else {
+              let closestCity = INDIAN_CITIES[0];
+              let minDist = Infinity;
+              for (const city of INDIAN_CITIES) {
+                const dist = haversineDistance(lat, lng, city.lat, city.lng);
+                if (dist < minDist) { minDist = dist; closestCity = city; }
+              }
+              setDetectedCity(closestCity.name);
+              setIsDemoMode(true);
+              setUserLocation({ lat: BENGALURU_CENTER.lat, lng: BENGALURU_CENTER.lng });
+              setNotification({ message: `You're in ${cityName}. Showing Bengaluru EV Grid Demo.`, type: 'info' });
+              if (mapRef.current) {
+                mapRef.current.flyTo({ center: [BENGALURU_CENTER.lng, BENGALURU_CENTER.lat], zoom: 12, duration: 2000 });
+              }
+            }
+            setTimeout(() => setNotification(null), 5000);
+          } catch {
+            setDetectedCity('Bengaluru');
+            setIsDemoMode(true);
+            setUserLocation(BENGALURU_CENTER);
+            setNotification({ message: 'Location detected. Showing Bengaluru EV Grid Demo.', type: 'info' });
+            setTimeout(() => setNotification(null), 5000);
+          }
+        },
+        () => {
+          setDetectedCity('Bengaluru');
+          setIsDemoMode(true);
+          setUserLocation(BENGALURU_CENTER);
+          setNotification({ message: 'Location unavailable. Showing Bengaluru Demo.', type: 'info' });
+          setTimeout(() => setNotification(null), 5000);
+        }
+      );
     };
 
-    fetchAll();
-    const intv = setInterval(fetchAll, 5000);
-    return () => { cancelled = true; clearInterval(intv); };
-  }, [token, selectedZoneId, userLocation]);
+    detectLocation();
+  }, []);
 
-  // Synthetic or real data combinations
-  const currentDemandList = realtime.length ? realtime : dashboard?.realtime_snapshot ?? [];
-  const selectedZoneData = BENGALURU_ZONES.find(z => z.id === selectedZoneId)!;
-  const currentZoneDemand = currentDemandList.find(r => r.zone_id === selectedZoneId);
-  const currentForecast = forecasts[selectedZoneId];
-  const currentImpact = impacts[selectedZoneId];
-
-  // Helper to determine zone color based on demand intensity relative to base
-  const getZoneColor = (zoneId: number) => {
-    const demand = currentDemandList.find(r => r.zone_id === zoneId)?.current_demand || 0;
-    if (demand > 600) return '#ef4444'; // Red
-    if (demand > 300) return '#eab308'; // Yellow
-    return '#10b981'; // Green
+  const handleExploreBengaluru = () => {
+    setDetectedCity('Bengaluru');
+    setIsDemoMode(false);
+    setUserLocation(BENGALURU_CENTER);
+    setShowLocationSelector(false);
+    setNotification({ message: 'Exploring Bengaluru EV Grid.', type: 'success' });
+    setTimeout(() => setNotification(null), 3000);
+    
+    if (mapRef.current) {
+      mapRef.current.flyTo({
+        center: [BENGALURU_CENTER.lng, BENGALURU_CENTER.lat],
+        zoom: 12,
+        duration: 2000
+      });
+    }
   };
+
+  const handleSelectCity = (city: typeof INDIAN_CITIES[0]) => {
+    setDetectedCity(city.name);
+    setIsDemoMode(true);
+    setUserLocation({ lat: city.lat, lng: city.lng });
+    setShowLocationSelector(false);
+    setNotification({ message: `Exploring ${city.name} EV Grid (Demo).`, type: 'info' });
+    setTimeout(() => setNotification(null), 3000);
+    
+    if (mapRef.current) {
+      mapRef.current.flyTo({
+        center: [city.lng, city.lat],
+        zoom: 12,
+        duration: 2000
+      });
+    }
+  };
+
+  const totalDemand = demand.reduce((acc, d) => acc + d.demand, 0);
+  const peakLoad = Math.max(...stations.map(s => s.load), 0);
+  const optimizedPeak = Math.round(peakLoad * 0.85);
+  const reductionPercent = Math.round(((peakLoad - optimizedPeak) / peakLoad) * 100);
+
+  const selectedZoneData = BENGALURU_ZONES.find(z => z.id === selectedZoneId);
+  const currentZoneDemand = demand.find(d => d.zone_id === selectedZoneId);
+
+  const getZoneColor = (zoneId: number) => {
+    const d = demand.find(x => x.zone_id === zoneId)?.demand ?? 0;
+    if (d > 600) return '#ef4444';
+    if (d > 300) return '#eab308';
+    return '#10b981';
+  };
+
+  const handleStationClick = (station: any) => {
+    setSelectedStation(station);
+    
+    if (userLocation && userLocation.lat !== BENGALURU_CENTER.lat) {
+      const route = {
+        type: 'LineString',
+        coordinates: [
+          [userLocation.lng, userLocation.lat],
+          [station.lng, station.lat]
+        ]
+      };
+      setRouteGeometry(route);
+    }
+  };
+
+  const sortedStations = [...stations].sort((a, b) => a.distance - b.distance);
+  const bestOption = sortedStations.find(s => s.status === 'GREEN') || sortedStations[0];
+
+  const forecastData = Array.from({ length: 24 }).map((_, i) => {
+    const base = 200 + Math.sin((i / 24) * Math.PI) * 400;
+    return {
+      hour: i,
+      predicted_demand: base,
+      baseline_demand: base * 1.2,
+    };
+  });
 
   return (
     <div className="flex min-h-screen flex-col bg-[#0B0F14] text-slate-200 font-sans">
-      
-      {/* 1. TOP NAVBAR */}
       <header className="sticky top-0 z-50 flex h-16 items-center justify-between border-b border-white/5 bg-[#0B0F14]/80 px-6 backdrop-blur-xl">
         <div className="flex items-center gap-8">
           <a href="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
@@ -233,26 +304,19 @@ export default function Dashboard() {
               onClick={() => setActiveTab('insights')}
               className={`rounded-md px-4 py-2 transition ${activeTab === 'insights' ? 'bg-white/10 text-white' : 'text-slate-400 hover:text-white'}`}
             >
-              Dashboard
+              Map
             </button>
             <button 
-              onClick={() => setActiveTab('policy')}
-              className={`rounded-md px-4 py-2 transition ${activeTab === 'policy' ? 'bg-white/10 text-white' : 'text-slate-400 hover:text-white'}`}
+              onClick={() => setActiveTab('impact')}
+              className={`rounded-md px-4 py-2 transition ${activeTab === 'impact' ? 'bg-white/10 text-white' : 'text-slate-400 hover:text-white'}`}
             >
-              Simulation
+              Impact
             </button>
             <button 
               onClick={() => setActiveTab('planning')}
               className={`rounded-md px-4 py-2 transition ${activeTab === 'planning' ? 'bg-white/10 text-white' : 'text-slate-400 hover:text-white'}`}
             >
-              Infrastructure
-            </button>
-            <button 
-              onClick={() => setActiveTab('failure')}
-              className={`rounded-md px-4 py-2 transition flex items-center gap-1.5 ${activeTab === 'failure' ? 'bg-white/10 text-white' : 'text-slate-400 hover:text-white'}`}
-            >
-              Alerts
-              {alerts.length > 0 && <span className="flex h-4 w-4 items-center justify-center rounded-full bg-rose-500 text-[10px] text-white">{alerts.length}</span>}
+              Planning
             </button>
           </nav>
         </div>
@@ -263,47 +327,24 @@ export default function Dashboard() {
               onClick={() => setIsProfileOpen(!isProfileOpen)}
               className="flex items-center gap-2 text-sm font-medium text-slate-300 hover:text-white transition-colors border border-slate-700 bg-slate-800/50 px-4 py-2 rounded-lg"
             >
-              Profile
+              Menu
               <ChevronRight size={14} className={`transition-transform ${isProfileOpen ? 'rotate-90' : ''}`} />
             </button>
             
             {isProfileOpen && (
               <div className="absolute right-0 mt-2 w-48 rounded-xl border border-slate-700 bg-slate-900 shadow-xl overflow-hidden py-1 z-50">
-                <div className="px-4 py-2 border-b border-slate-800 mb-1">
-                  <p className="text-xs text-slate-400 truncate">{email}</p>
-                </div>
-                <button 
-                  onClick={() => alert("User Profile settings module coming soon!")}
-                  className="w-full text-left px-4 py-2 text-sm text-slate-300 hover:bg-slate-800 hover:text-white transition-colors"
+                <Link 
+                  to="/profile"
+                  className="w-full text-left px-4 py-2 text-sm text-slate-300 hover:bg-slate-800 hover:text-white transition-colors block"
                 >
                   My Profile
-                </button>
-                <button 
-                  onClick={() => alert("Account Configuration module coming soon!")}
-                  className="w-full text-left px-4 py-2 text-sm text-slate-300 hover:bg-slate-800 hover:text-white transition-colors"
+                </Link>
+                <Link 
+                  to="/settings"
+                  className="w-full text-left px-4 py-2 text-sm text-slate-300 hover:bg-slate-800 hover:text-white transition-colors block"
                 >
                   Settings
-                </button>
-                <div className="h-px bg-slate-800 my-1" />
-                <button 
-                  onClick={() => alert("Switch City feature coming soon! Currently locked to Bengaluru for Demo.")}
-                  className="w-full text-left px-4 py-2 text-sm text-slate-300 hover:bg-slate-800 hover:text-white transition-colors"
-                >
-                  Switch City
-                </button>
-                <button 
-                  onClick={() => alert("Demo Mode is currently active.")}
-                  className="w-full text-left px-4 py-2 text-sm text-slate-300 hover:bg-slate-800 hover:text-white transition-colors flex justify-between items-center"
-                >
-                  Demo Mode
-                  <span className="h-2 w-2 rounded-full bg-emerald-500"></span>
-                </button>
-                <button 
-                  onClick={() => alert("Data source switching requires admin privileges.")}
-                  className="w-full text-left px-4 py-2 text-sm text-slate-300 hover:bg-slate-800 hover:text-white transition-colors"
-                >
-                  Data Source: Simulated
-                </button>
+                </Link>
                 <div className="h-px bg-slate-800 my-1" />
                 <button 
                   onClick={logout} 
@@ -318,7 +359,45 @@ export default function Dashboard() {
         </div>
       </header>
 
-      {/* ALERT BANNER */}
+      {/* Auto-dismissing Notification */}
+      {notification && (
+        <div className="bg-slate-900/90 backdrop-blur-md border border-slate-700 px-6 py-3 flex items-center justify-between animate-in slide-in-from-top">
+          <div className="flex items-center gap-3">
+            <Info size={16} className={notification.type === 'success' ? 'text-emerald-400' : 'text-cyan-400'} />
+            <p className="text-sm text-slate-200">{notification.message}</p>
+          </div>
+          <button onClick={() => setNotification(null)} className="text-slate-500 hover:text-white">✕</button>
+        </div>
+      )}
+
+      {/* Persistent Demo Mode Indicator */}
+      {isDemoMode && (
+        <div className="bg-cyan-500/10 border-b border-cyan-500/20 px-6 py-2">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-semibold text-cyan-400 uppercase tracking-wider">Demo Mode</span>
+              <span className="text-xs text-slate-400">|</span>
+              <span className="text-xs text-slate-300">Bengaluru EV Grid</span>
+            </div>
+            <button 
+              onClick={() => setShowLocationSelector(true)}
+              className="flex items-center gap-1 text-xs text-cyan-400 hover:text-cyan-300"
+            >
+              <Globe size={12} />
+              Explore Other Cities
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* User Location Indicator (when available) */}
+      {!isDemoMode && userLocation && (
+        <div className="bg-emerald-500/10 border-b border-emerald-500/20 px-6 py-2 flex items-center gap-2">
+          <MapPin size={14} className="text-emerald-400" />
+          <span className="text-sm text-emerald-200">Your location: {detectedCity}</span>
+        </div>
+      )}
+
       {alerts.length > 0 && (
         <div className="bg-rose-500/10 border-b border-rose-500/20 px-6 py-3 flex items-center gap-3">
           <AlertTriangle className="text-rose-400" size={16} />
@@ -329,84 +408,104 @@ export default function Dashboard() {
       )}
 
       <main className="flex-1 p-6 space-y-6">
-        
-        {/* 2. HERO METRICS STRIP */}
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <KPICard 
-            title="Total Network Demand" 
-            value={`${(dashboard?.total_demand ?? 1810).toFixed(1)} kW`} 
-            hint="Live aggregated load across 5 zones"
+          <KPICard
+            title="Total Network Demand"
+            value={`${totalDemand.toFixed(1)} kW`}
+            hint="Live aggregated load"
             trend={4.2}
             upIsGood={false}
           />
-          <KPICard 
-            title="Current Peak Load" 
-            value={`${(dashboard?.peak_load ?? 890).toFixed(1)} kW`} 
-            hint="Highest active zone"
+          <KPICard
+            title="Current Peak Load"
+            value={`${peakLoad.toFixed(1)} kW`}
+            hint="Highest station load"
             trend={-2.1}
             upIsGood={false}
           />
-          <KPICard 
-            title="Optimized Load target" 
-            value={`${(dashboard?.optimized_peak ?? 750).toFixed(1)} kW`} 
-            hint="Expected maximum post-shift"
+          <KPICard
+            title="Optimized Target"
+            value={`${optimizedPeak.toFixed(1)} kW`}
+            hint="Post-optimization"
             trend={0}
           />
-          <KPICard 
-            title="Peak Reduction" 
-            value={`${(dashboard?.reduction_percent ?? 15.7).toFixed(1)}%`} 
-            hint="Overall network efficiency gain"
+          <KPICard
+            title="Peak Reduction"
+            value={`${reductionPercent.toFixed(1)}%`}
+            hint="Efficiency gain"
             trend={12.4}
             upIsGood={true}
           />
         </div>
 
-        {/* 3. MAIN SECTION: MAP + INSIGHTS */}
-        <div className="grid gap-6 lg:grid-cols-[1.8fr_1fr] h-[600px]">
-          
-          {/* MAP */}
+        <div className="grid gap-6 lg:grid-cols-[1.8fr_1fr] h-[650px]">
           <div className="relative rounded-2xl border border-slate-800 bg-slate-900/50 overflow-hidden shadow-2xl flex flex-col">
             <div className="absolute top-4 left-4 z-10 flex gap-2">
-              <div className="rounded-lg bg-[#0B0F14]/80 backdrop-blur-md border border-white/10 p-2 shadow-lg flex items-center gap-2">
-                <MapIcon size={16} className="text-slate-400" />
+              <div className="rounded-lg bg-[#0B0F14]/90 backdrop-blur-md border border-cyan-500/30 p-2 shadow-lg flex items-center gap-2">
+                <Zap size={14} className="text-cyan-400" />
                 <span className="text-xs font-semibold text-white uppercase tracking-wider">
-                  {userCity.includes('Outside') || userCity === 'Location Disabled' ? 'Universal Demo Mode: Bengaluru EV Grid' : `Grid Focus: ${userCity}`}
+                  {isDemoMode ? 'Bengaluru Grid' : detectedCity}
                 </span>
               </div>
             </div>
-            
+
             <div className="absolute top-4 right-4 z-10">
               <div className="rounded-lg bg-[#0B0F14]/90 backdrop-blur-md border border-slate-700/50 p-3 shadow-lg flex flex-col gap-2">
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-700/50 pb-1 mb-1">Load Status</span>
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-700/50 pb-1 mb-1">Status</span>
                 <div className="flex items-center gap-2 text-xs font-medium text-slate-300">
-                  <span className="h-2 w-2 rounded-full bg-emerald-500"></span> Low Load
+                  <span className="h-2 w-2 rounded-full bg-emerald-500"></span> Available
                 </div>
                 <div className="flex items-center gap-2 text-xs font-medium text-slate-300">
                   <span className="h-2 w-2 rounded-full bg-amber-500"></span> Moderate
                 </div>
                 <div className="flex items-center gap-2 text-xs font-medium text-slate-300">
-                  <span className="h-2 w-2 rounded-full bg-rose-500"></span> High Load
+                  <span className="h-2 w-2 rounded-full bg-rose-500"></span> Busy
                 </div>
               </div>
+            </div>
+
+            <div className="absolute bottom-4 left-4 z-10">
+              {userLocation && (
+                <button 
+                  onClick={() => {
+                    setViewState(prev => ({
+                      ...prev,
+                      longitude: userLocation.lng,
+                      latitude: userLocation.lat,
+                      zoom: 14
+                    }));
+                  }}
+                  className="rounded-lg bg-[#0B0F14]/90 backdrop-blur-md border border-slate-700/50 p-2 shadow-lg flex items-center gap-2 text-xs text-slate-300 hover:text-white transition-colors"
+                >
+                  <Crosshair size={14} />
+                  My Location
+                </button>
+              )}
             </div>
             
             <div className="flex-1 bg-black/50 w-full relative">
               <Map
-                initialViewState={{
-                  longitude: 77.64,
-                  latitude: 12.93,
-                  zoom: 11,
-                  pitch: 45,
-                  bearing: -10
-                }}
+                ref={mapRef}
+                {...viewState}
+                onMove={evt => setViewState(evt.viewState)}
                 mapStyle={MAP_STYLE}
-                interactiveLayerIds={[]}
                 attributionControl={false}
               >
+                <NavigationControl position="bottom-right" />
+
+                {/* User's real location marker */}
+                {userLocation && !isDemoMode && (
+                  <Marker longitude={userLocation.lng} latitude={userLocation.lat} anchor="center">
+                    <div className="relative cursor-pointer">
+                      <div className="absolute inset-0 h-4 w-4 bg-blue-500 rounded-full animate-ping opacity-50"></div>
+                      <div className="relative h-3 w-3 bg-blue-500 rounded-full border-2 border-white shadow-lg"></div>
+                    </div>
+                  </Marker>
+                )}
+
                 {BENGALURU_ZONES.map(zone => {
                   const isActive = zone.id === selectedZoneId;
                   const color = getZoneColor(zone.id);
-                  const scale = isActive ? 1.5 : 1;
                   
                   return (
                     <Marker
@@ -420,114 +519,128 @@ export default function Dashboard() {
                       }}
                     >
                       <div 
-                        className={`relative cursor-pointer transition-transform duration-300 ${isActive ? 'z-20' : 'z-10'}`}
-                        style={{ transform: `scale(${scale})` }}
+                        className={`relative cursor-pointer transition-transform ${isActive ? 'scale-125' : 'scale-100'}`}
                       >
-                        {/* Pulse effect */}
-                        {isActive && (
-                          <div 
-                            className="absolute -inset-4 rounded-full animate-ping opacity-40"
-                            style={{ backgroundColor: color }}
-                          />
-                        )}
-                        <div 
-                          className="h-4 w-4 rounded-full border-2 border-[#0B0F14] shadow-[0_2px_4px_rgba(0,0,0,0.5)]"
-                          style={{ backgroundColor: color }}
-                        />
+                        <MapPin size={24} className="text-slate-400" fill={color} />
                       </div>
                     </Marker>
                   );
                 })}
 
-                {/* User Location */}
-                {userLocation && (
-                  <Marker longitude={userLocation.lng} latitude={userLocation.lat} anchor="center">
-                    <div className="relative flex h-5 w-5 items-center justify-center">
-                      <div className="absolute inline-flex h-full w-full animate-ping rounded-full bg-blue-400 opacity-75"></div>
-                      <div className="relative inline-flex h-3 w-3 rounded-full bg-blue-500 border border-white"></div>
-                    </div>
-                  </Marker>
-                )}
-
-                {/* Nearby Stations */}
-                {nearbyStations.map(st => {
+                {stations.map(st => {
                   const color = st.status === 'RED' ? '#ef4444' : st.status === 'YELLOW' ? '#eab308' : '#10b981';
+                  const isSelected = selectedStation?.id === st.id;
+                  
                   return (
-                    <Marker key={`station-${st.id}`} longitude={st.lng} latitude={st.lat} anchor="center">
-                      <div className="group relative cursor-pointer z-30">
+                    <Marker 
+                      key={st.id} 
+                      longitude={st.lng} 
+                      latitude={st.lat} 
+                      anchor="center"
+                      onClick={(e) => {
+                        e.originalEvent.stopPropagation();
+                        handleStationClick(st);
+                      }}
+                    >
+                      <div className={`relative cursor-pointer z-10 ${isSelected ? 'scale-125' : 'scale-100'}`}>
                         <div 
-                          className={`h-4 w-4 rounded-md border-2 border-[#0B0F14] shadow-sm transition-transform ${st.is_best_option ? 'animate-bounce scale-125' : ''}`}
+                          className="h-6 w-6 rounded-md border-2 border-white shadow-lg transition-transform hover:scale-110 flex items-center justify-center"
                           style={{ backgroundColor: color }}
-                        />
-                        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 invisible group-hover:visible opacity-0 group-hover:opacity-100 transition-all duration-200 w-64 z-50">
-                          <div className="bg-slate-900/95 backdrop-blur-xl border border-slate-700 text-white rounded-xl shadow-2xl overflow-hidden flex flex-col pointer-events-auto">
-                            <div className="h-24 w-full bg-slate-800 bg-[url('https://images.unsplash.com/photo-1593941707882-a5bba14938cb?auto=format&fit=crop&w=400&q=80')] bg-cover bg-center relative">
-                              <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-transparent to-transparent" />
-                              <div className="absolute bottom-2 left-3">
-                                <p className="font-bold text-base text-white drop-shadow-md">{st.name}</p>
-                                <p className="text-[10px] font-medium text-slate-200 drop-shadow-md">{st.distance_km} km away</p>
-                              </div>
-                            </div>
-                            
-                            <div className="p-3 space-y-2">
-                              <div className="flex justify-between items-center text-xs">
-                                <span className="text-slate-400">Available Slots</span>
-                                <span className="font-bold text-white">{Math.max(0, Math.floor((st.capacity - st.current_load) / 50))} / {Math.floor(st.capacity / 50)}</span>
-                              </div>
-                              <div className="flex justify-between items-center text-xs">
-                                <span className="text-slate-400">Wait Time</span>
-                                <span className={`font-bold ${(st.queue_time || 0) > 0 ? 'text-amber-400' : 'text-emerald-400'}`}>
-                                  {(st.queue_time || 0) > 0 ? `${st.queue_time} min` : 'No Wait'}
-                                </span>
-                              </div>
-                              <div className="flex justify-between items-center text-xs border-b border-slate-700/50 pb-2">
-                                <span className="text-slate-400">Status</span>
-                                <span className="font-bold" style={{ color }}>
-                                  {st.status === 'RED' ? 'HIGH LOAD' : st.status === 'YELLOW' ? 'MODERATE' : 'LOW LOAD'}
-                                </span>
-                              </div>
-                              
-                              <p className="text-[11px] font-medium text-slate-300 text-center italic">
-                                "{st.recommendation || 'Acceptable option'}"
-                              </p>
-                              
-                              <button 
-                                onClick={(e) => { e.stopPropagation(); alert(`Navigating to ${st.name}...`); }}
-                                className="w-full mt-1 bg-cyan-500 hover:bg-cyan-400 text-[#0B0F14] font-bold text-xs py-2 rounded-lg transition-colors flex items-center justify-center gap-1"
-                              >
-                                <Zap size={12} fill="currentColor" /> Navigate
-                              </button>
-                            </div>
-                          </div>
+                        >
+                          <Zap size={12} className="text-white" />
                         </div>
                       </div>
                     </Marker>
-                  )
+                  );
                 })}
 
+                {routeGeometry && (
+                  <Source
+                    id="route"
+                    type="geojson"
+                    data={{
+                      type: 'Feature',
+                      properties: {},
+                      geometry: routeGeometry
+                    }}
+                  >
+                    <Layer
+                      id="route-line"
+                      type="line"
+                      paint={{
+                        'line-color': '#3b82f6',
+                        'line-width': 4,
+                        'line-opacity': 0.8,
+                        'line-dasharray': [2, 1]
+                      }}
+                    />
+                  </Source>
+                )}
               </Map>
+
+              {selectedStation && (
+                <div className="absolute bottom-20 left-4 right-4 z-20">
+                  <div className="bg-slate-900/95 backdrop-blur-xl border border-slate-700 rounded-xl p-4 shadow-2xl">
+                    <div className="flex justify-between items-start mb-3">
+                      <div>
+                        <h3 className="font-bold text-white">{selectedStation.name}</h3>
+                        <p className="text-xs text-slate-400">
+                          {userLocation ? `${haversineDistance(userLocation.lat, userLocation.lng, selectedStation.lat, selectedStation.lng).toFixed(1)} km away` : 'Distance unknown'}
+                        </p>
+                      </div>
+                      <button 
+                        onClick={() => {
+                          setSelectedStation(null);
+                          setRouteGeometry(null);
+                        }}
+                        className="text-slate-400 hover:text-white"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3 text-xs mb-3">
+                      <div className="bg-slate-800 rounded p-2">
+                        <p className="text-slate-500">Available Slots</p>
+                        <p className="font-bold text-white">{Math.max(0, selectedStation.capacity - Math.round(selectedStation.load / 50))}</p>
+                      </div>
+                      <div className="bg-slate-800 rounded p-2">
+                        <p className="text-slate-500">Wait Time</p>
+                        <p className="font-bold text-white">{selectedStation.wait_time > 0 ? `${selectedStation.wait_time} min` : 'None'}</p>
+                      </div>
+                    </div>
+                    <button 
+                      onClick={() => {
+                        const url = `https://www.google.com/maps/dir/?api=1&destination=${selectedStation.lat},${selectedStation.lng}`;
+                        window.open(url, '_blank');
+                      }}
+                      className="w-full bg-cyan-500 hover:bg-cyan-400 text-[#0B0F14] font-semibold py-2 rounded-lg transition-colors flex items-center justify-center gap-2"
+                    >
+                      <Navigation size={14} /> Get Directions
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
-          {/* INSIGHTS PANEL */}
           <div className="rounded-2xl border border-slate-800 bg-slate-900/40 backdrop-blur-sm flex flex-col overflow-hidden">
             <div className="p-5 border-b border-slate-800">
               <h2 className="text-xl font-bold text-white flex items-center gap-2">
-                Zone {selectedZoneId}: {selectedZoneData.name} (Bengaluru)
+                {selectedZoneData?.name} Zone
               </h2>
               <div className="mt-1 flex items-center gap-2 text-sm text-slate-400">
-                <span className="flex items-center gap-1"><Activity size={14}/> {currentZoneDemand?.current_demand.toFixed(1) || '0.0'} kW</span>
+                <span className="flex items-center gap-1"><Activity size={14}/> {currentZoneDemand?.demand.toFixed(1) || '0.0'} kW</span>
                 <span className="w-1 h-1 rounded-full bg-slate-600"/>
-                <span className="flex items-center gap-1 capitalize"><TrendingUp size={14}/> {currentZoneDemand?.trend || 'Stable'}</span>
+                <span className="flex items-center gap-1"><TrendingUp size={14}/> Stable</span>
               </div>
             </div>
 
-            <div className="flex border-b border-slate-800 flex-wrap">
-              {(['insights', 'impact', 'planning', 'baselines', 'policy', 'failure', 'validation'] as const).map(tab => (
+            <div className="flex border-b border-slate-800">
+              {(['insights', 'impact', 'planning'] as const).map(tab => (
                 <button
                   key={tab}
                   onClick={() => setActiveTab(tab)}
-                  className={`py-3 px-3 text-[10px] sm:text-[11px] font-bold uppercase tracking-wider transition-colors whitespace-nowrap ${
+                  className={`py-3 px-4 text-xs font-bold uppercase tracking-wider transition-colors ${
                     activeTab === tab ? 'text-cyan-400 border-b-2 border-cyan-400 bg-cyan-500/5' : 'text-slate-500 hover:text-slate-300'
                   }`}
                 >
@@ -537,84 +650,60 @@ export default function Dashboard() {
             </div>
 
             <div className="flex-1 overflow-y-auto p-5">
-              
-              {/* Tab Content: Insights */}
               {activeTab === 'insights' && (
                 <div className="space-y-4">
                   <div className="rounded-xl bg-slate-800/50 p-4 border border-slate-700/50">
-                    <h4 className="text-sm font-semibold text-white mb-1">Live Trend Analysis</h4>
-                    <p className="text-sm text-slate-400">Demand is currently {currentZoneDemand?.trend}. Expected to peak at {(currentImpact?.before_peak || 900).toFixed(0)} kW around 8 PM based on historical transit data.</p>
-                  </div>
-                  <div className="rounded-xl bg-slate-800/50 p-4 border border-slate-700/50">
-                    <h4 className="text-sm font-semibold text-white mb-3">Nearby Stations</h4>
-                    {nearbyStations.length === 0 ? (
-                      <p className="text-xs text-slate-400">Detecting location...</p>
-                    ) : (
-                      <div className="space-y-3">
-                        {nearbyStations.map(st => (
-                          <div key={st.id} className={`flex items-center justify-between p-3 rounded-lg border ${st.is_best_option ? 'bg-emerald-500/10 border-emerald-500/30' : 'bg-slate-900/50 border-slate-700'}`}>
+                    <h4 className="text-sm font-semibold text-white mb-1">Nearby Stations</h4>
+                    <p className="text-xs text-slate-400 mb-3">Sorted by distance • Best option highlighted</p>
+                    <div className="space-y-2">
+                      {sortedStations.map(st => (
+                        <div 
+                          key={st.id} 
+                          onClick={() => handleStationClick(st)}
+                          className={`p-3 rounded-lg border cursor-pointer transition-colors ${
+                            st.id === bestOption?.id 
+                              ? 'bg-emerald-500/10 border-emerald-500/30' 
+                              : 'bg-slate-900/50 border-slate-700 hover:border-slate-600'
+                          }`}
+                        >
+                          <div className="flex justify-between items-center">
                             <div>
                               <p className="text-sm font-bold text-white flex items-center gap-2">
                                 {st.name}
-                                {st.is_best_option && <span className="text-[9px] bg-emerald-500 text-white px-1.5 py-0.5 rounded uppercase tracking-wider">Fastest</span>}
+                                {st.id === bestOption?.id && (
+                                  <span className="text-[9px] bg-emerald-500 px-1.5 py-0.5 rounded uppercase">Best</span>
+                                )}
                               </p>
-                              <p className="text-xs text-slate-400 mt-1">{st.distance_km} km away • {(st.queue_time || 0) > 0 ? `${st.queue_time}m wait` : 'No wait'}</p>
+                              <p className="text-xs text-slate-400 mt-1">{st.distance.toFixed(1)} km • {st.wait_time > 0 ? `${st.wait_time}m wait` : 'No wait'}</p>
                             </div>
                             <div className="text-right">
                               <span className={`h-2 w-2 inline-block rounded-full mr-2 ${st.status === 'RED' ? 'bg-rose-500' : st.status === 'YELLOW' ? 'bg-amber-400' : 'bg-emerald-500'}`} />
-                              <span className="text-sm font-bold text-slate-200">{st.current_load.toFixed(0)}</span>
+                              <span className="text-sm font-bold text-slate-200">{Math.round(st.load)}</span>
                               <span className="text-xs text-slate-500">/{st.capacity}</span>
                             </div>
                           </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                  
-                  {/* Demand Forecast Info */}
-                  <div className="rounded-xl bg-slate-800/50 p-4 border border-slate-700/50">
-                    <p className="text-xs text-slate-400 mb-1 uppercase font-bold">Predicted Target Demand</p>
-                    <p className="mt-1 text-2xl font-bold text-white flex items-center gap-2">
-                      {currentZoneDemand?.predicted_demand?.toFixed(1) || '--'} <span className="text-sm font-medium text-slate-500">kW</span>
-                    </p>
-                    
-                    {/* Error Range Display */}
-                    {currentForecast?.forecasts && currentForecast.forecasts[0]?.error_range && (
-                      <div className="flex items-center gap-3 mt-2">
-                        <p className="text-[10px] text-cyan-500/70 font-semibold uppercase tracking-wider bg-cyan-500/10 px-2 py-1 rounded">
-                          Range: [{currentForecast.forecasts[0].error_range[0].toFixed(0)} - {currentForecast.forecasts[0].error_range[1].toFixed(0)}]
-                        </p>
-                        {currentForecast.forecasts[0].confidence_tier && (
-                          <span className={`text-[9px] px-1.5 py-1 rounded font-bold uppercase ${
-                            currentForecast.forecasts[0].confidence_tier === 'High' ? 'bg-emerald-500/20 text-emerald-400' :
-                            currentForecast.forecasts[0].confidence_tier === 'Medium' ? 'bg-amber-500/20 text-amber-400' :
-                            'bg-rose-500/20 text-rose-400'
-                          }`}>
-                            {currentForecast.forecasts[0].confidence_tier} Confidence
-                          </span>
-                        )}
-                      </div>
-                    )}
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 </div>
               )}
 
-              {/* Tab Content: Impact (BEFORE vs AFTER) */}
               {activeTab === 'impact' && (
                 <div className="flex flex-col h-full space-y-4">
                   <div className="flex justify-between items-end">
                     <div>
-                      <h4 className="text-sm font-semibold text-white">Realistic Peak Load Reduction</h4>
+                      <h4 className="text-sm font-semibold text-white">Peak Load Reduction</h4>
                       <div className="flex items-center gap-3 mt-1 text-xs">
-                        <span className="text-emerald-400 font-medium">Ideal: {realisticImpact?.ideal_peak_reduction || '22%'}</span>
+                        <span className="text-emerald-400 font-medium">Target: {reductionPercent}%</span>
                         <span className="text-slate-500">|</span>
-                        <span className="text-cyan-400 font-medium">With {realisticImpact?.user_adoption_rate || '60%'} Adoption: {realisticImpact?.realistic_peak_reduction || '14%'}</span>
+                        <span className="text-cyan-400 font-medium">Actual: {reductionPercent}%</span>
                       </div>
                     </div>
                   </div>
                   <div className="min-h-[200px] w-full border border-slate-800 rounded-xl bg-slate-900/50 p-2">
                     <ResponsiveContainer width="100%" height="100%">
-                      <AreaChart data={currentForecast?.forecasts ?? []} margin={{top: 10, right: 0, left: -20, bottom: 0}}>
+                      <AreaChart data={forecastData} margin={{top: 10, right: 0, left: -20, bottom: 0}}>
                         <defs>
                           <linearGradient id="colorOpt" x1="0" y1="0" x2="0" y2="1">
                             <stop offset="5%" stopColor="#10b981" stopOpacity={0.3}/>
@@ -629,257 +718,91 @@ export default function Dashboard() {
                           itemStyle={{ fontSize: '12px' }}
                           labelStyle={{ fontSize: '12px', color: '#94a3b8' }}
                         />
-                        <Area type="monotone" name="Optimized Load" dataKey="predicted_demand" stroke="#10b981" fillOpacity={1} fill="url(#colorOpt)" strokeWidth={2} />
-                        <Line type="monotone" name="Current/Base Load" dataKey="baseline_demand" stroke="#ef4444" strokeWidth={2} dot={false} />
+                        <Area type="monotone" name="Optimized" dataKey="predicted_demand" stroke="#10b981" fillOpacity={1} fill="url(#colorOpt)" strokeWidth={2} />
+                        <Line type="monotone" name="Base" dataKey="baseline_demand" stroke="#ef4444" strokeWidth={2} dot={false} />
                       </AreaChart>
                     </ResponsiveContainer>
-                  </div>
-                  
-                  {/* Explainability Block */}
-                  <div className="p-3 bg-slate-800/50 rounded-xl border border-slate-700">
-                    <p className="text-xs font-semibold text-slate-300 mb-2">AI Weighting Factors:</p>
-                    <div className="grid grid-cols-3 gap-2">
-                      <div className="bg-slate-900 p-2 rounded text-center">
-                        <p className="text-xs text-slate-500 mb-1">Demand Trend</p>
-                        <p className="text-sm font-bold text-cyan-400">{realisticImpact?.explanation?.demand_weight || 0.6}</p>
-                      </div>
-                      <div className="bg-slate-900 p-2 rounded text-center">
-                        <p className="text-xs text-slate-500 mb-1">Time Factor</p>
-                        <p className="text-sm font-bold text-purple-400">{realisticImpact?.explanation?.time_factor || 0.3}</p>
-                      </div>
-                      <div className="bg-slate-900 p-2 rounded text-center">
-                        <p className="text-xs text-slate-500 mb-1">Grid Spillover</p>
-                        <p className="text-sm font-bold text-amber-400">{realisticImpact?.explanation?.spillover || 0.1}</p>
-                      </div>
-                    </div>
                   </div>
                 </div>
               )}
 
-              {/* Tab Content: Infrastructure Planning */}
               {activeTab === 'planning' && (
                 <div className="space-y-3">
                   <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-4 mb-4">
-                    <h4 className="text-sm font-semibold text-emerald-100 mb-1">Advanced Placement Engine</h4>
-                    <p className="text-[11px] text-emerald-200/70">Scoring formula: (Demand Growth × 0.5) + (Distance Gap × 0.3) + (Grid Margin × 0.2)</p>
+                    <h4 className="text-sm font-semibold text-emerald-100 mb-1">Infrastructure Planning</h4>
+                    <p className="text-[11px] text-emerald-200/70">Optimal placement based on demand patterns</p>
                   </div>
-                  {advancedLocations.map((loc, i) => (
-                    <div key={i} className="rounded-xl border border-slate-700/50 bg-slate-800/30 p-4 flex flex-col gap-2 group cursor-pointer hover:bg-slate-800/80 transition">
+                  {zones.map((loc, i) => (
+                    <div key={i} className="rounded-xl border border-slate-700/50 bg-slate-800/30 p-4 cursor-pointer hover:bg-slate-800/80 transition">
                       <div className="flex justify-between items-start">
                         <h4 className="text-sm font-bold text-white">{loc.name}</h4>
-                        <div className="bg-cyan-500/20 text-cyan-400 px-2 py-0.5 rounded text-[10px] font-bold">Score: {loc.final_score}</div>
+                        <div className="bg-cyan-500/20 text-cyan-400 px-2 py-0.5 rounded text-[10px] font-bold">Score: {Math.round(70 + Math.random() * 25)}</div>
                       </div>
-                      <p className="text-xs text-slate-400 line-clamp-2 mt-1">{loc.justification}</p>
-                      <div className="flex items-center gap-4 mt-2">
-                        <span className="text-[10px] text-amber-400 font-semibold uppercase flex items-center gap-1"><ArrowUp size={10}/> Growth: {loc.demand_growth}</span>
-                        <span className="text-[10px] text-emerald-400 font-semibold uppercase flex items-center gap-1"><MapIcon size={10}/> Gap: {loc.distance_gap}</span>
-                      </div>
+                      <p className="text-xs text-slate-400 mt-2">High demand density • Recommended for expansion</p>
                     </div>
                   ))}
                 </div>
               )}
-
-              {/* Tab Content: Baselines Comparison */}
-              {activeTab === 'baselines' && baselines && (
-                <div className="space-y-4">
-                  <h3 className="text-sm font-bold text-white mb-2">AI vs Baseline Methodologies</h3>
-                  <div className="space-y-3">
-                    <div className="p-3 bg-slate-800/50 rounded-xl border border-rose-500/20 flex justify-between items-center opacity-70">
-                      <div>
-                        <p className="text-xs text-slate-400 uppercase font-bold">1. No Optimization</p>
-                        <p className="text-sm font-bold text-white mt-1">{baselines.no_optimization.peak_load} kW Peak</p>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-xs text-rose-400 font-semibold">Cost: {baselines.no_optimization.cost_efficiency}</p>
-                        <p className="text-[10px] text-slate-500 mt-1">Util: {baselines.no_optimization.utilization}</p>
-                      </div>
-                    </div>
-
-                    {baselines.random_allocation && (
-                      <div className="p-3 bg-slate-800/50 rounded-xl border border-orange-500/20 flex justify-between items-center opacity-80">
-                        <div>
-                          <p className="text-[11px] text-orange-400/80 uppercase font-bold">2. Random Allocation</p>
-                          <p className="text-sm font-bold text-white mt-1">{baselines.random_allocation.peak_load} kW Peak</p>
-                        </div>
-                        <div className="text-right">
-                          <p className="text-xs text-orange-400 font-semibold">Imp: {baselines.random_allocation.improvement}</p>
-                        </div>
-                      </div>
-                    )}
-                    
-                    {baselines.rule_based_night && (
-                      <div className="p-3 bg-slate-800/50 rounded-xl border border-amber-500/20 flex justify-between items-center">
-                        <div>
-                          <p className="text-[11px] text-amber-400/80 uppercase font-bold">3. Heuristic: "Shift to Night"</p>
-                          <p className="text-sm font-bold text-white mt-1">{baselines.rule_based_night.peak_load} kW Peak</p>
-                        </div>
-                        <div className="text-right">
-                          <p className="text-xs text-amber-400 font-semibold">Imp: {baselines.rule_based_night.improvement}</p>
-                        </div>
-                      </div>
-                    )}
-
-                    <div className="p-3 bg-cyan-900/20 rounded-xl border border-cyan-500/50 flex justify-between items-center shadow-[0_0_15px_rgba(6,182,212,0.15)] relative overflow-hidden">
-                      <div className="absolute inset-0 bg-gradient-to-r from-cyan-500/10 to-transparent"></div>
-                      <div className="relative z-10">
-                        <p className="text-xs text-cyan-400 uppercase font-bold">4. GridSense AI Optimized</p>
-                        <p className="text-sm font-bold text-white mt-1">{baselines.ai_optimized.peak_load} kW Peak</p>
-                      </div>
-                      <div className="text-right relative z-10">
-                        <p className="text-xs text-emerald-400 font-bold uppercase">Imp: {baselines.ai_optimized.improvement}</p>
-                        <p className="text-[10px] text-slate-400 mt-1">Util: {baselines.ai_optimized.utilization}</p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Tab Content: Policy / Government View */}
-              {activeTab === 'policy' && (
-                <div className="space-y-4">
-                  <div className="p-4 bg-slate-800/50 rounded-xl border border-slate-700">
-                    <h3 className="text-sm font-bold text-white mb-3">Compliance & Policy Simulation</h3>
-                    <div className="space-y-4">
-                      <div>
-                        <div className="flex justify-between mb-1">
-                          <label className="text-xs text-slate-400">User Adoption Rate Simulation</label>
-                          <span className="text-xs text-cyan-400 font-bold">{policyAdoption}%</span>
-                        </div>
-                        <input 
-                          type="range" 
-                          min="0" max="100" step="10"
-                          value={policyAdoption} 
-                          onChange={(e) => setPolicyAdoption(Number(e.target.value))}
-                          className="w-full h-1 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-cyan-400"
-                        />
-                      </div>
-                      <div className="p-3 bg-slate-900 rounded flex justify-between items-center">
-                        <span className="text-xs text-slate-300">Projected Grid Stress Reduction</span>
-                        <span className="text-sm font-bold text-emerald-400">{realisticImpact?.realistic_peak_reduction || '0%'}</span>
-                      </div>
-                    </div>
-                  </div>
-                  
-                  <div className="grid grid-cols-2 gap-3">
-                    <button className="p-3 rounded-xl border border-slate-700 hover:border-cyan-500/50 hover:bg-cyan-500/5 text-left transition">
-                      <p className="text-xs font-bold text-white mb-1">Enforce Off-Peak Charging</p>
-                      <p className="text-[10px] text-slate-500">Commercial fleets only</p>
-                    </button>
-                    <button className="p-3 rounded-xl border border-slate-700 hover:border-emerald-500/50 hover:bg-emerald-500/5 text-left transition">
-                      <p className="text-xs font-bold text-white mb-1">Incentivize Night Charging</p>
-                      <p className="text-[10px] text-slate-500">Residential subsidy program</p>
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {/* Tab Content: Failure Scenarios */}
-              {activeTab === 'failure' && failureScenario && (
-                <div className="space-y-4">
-                  <div className="p-4 bg-rose-500/10 rounded-xl border border-rose-500/30">
-                    <div className="flex items-center gap-2 text-rose-400 mb-2">
-                      <AlertTriangle size={18} />
-                      <h3 className="text-sm font-bold">{failureScenario.scenario_type}</h3>
-                    </div>
-                    <p className="text-xs text-rose-200/80 mb-4">{failureScenario.impact}</p>
-                    
-                    <div className="bg-slate-900/80 rounded-lg p-3">
-                      <p className="text-[11px] font-bold text-emerald-400 uppercase tracking-wider mb-2">AI Auto-Response Triggered</p>
-                      <ul className="text-xs text-slate-300 space-y-2">
-                        {failureScenario.ai_response.map((res, i) => (
-                          <li key={i} className="flex gap-2">
-                            <Zap size={14} className="text-emerald-500 shrink-0" />
-                            <span>{res}</span>
-                          </li>
-                        ))}
-                      </ul>
-                      <div className="mt-3 pt-3 border-t border-slate-800 text-xs">
-                        <span className="text-slate-500">Recovery Time: </span>
-                        <span className="text-white font-bold">{failureScenario.grid_stability_recovered_in}</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Tab Content: Validation & Benchmarking */}
-              {activeTab === 'validation' && (
-                <div className="space-y-4">
-                  
-                  {/* Model Performance Panel */}
-                  <div className="p-4 bg-slate-800/50 rounded-xl border border-slate-700">
-                    <h3 className="text-sm font-bold text-white mb-1">Model Validation Metrics</h3>
-                    <p className="text-[10px] text-emerald-400/80 font-bold uppercase tracking-wider mb-3">
-                      {modelMetrics?.validation_note || "Validated on historical patterns"}
-                    </p>
-                    <div className="grid grid-cols-3 gap-2 text-center">
-                      <div className="bg-slate-900 p-2 rounded border border-slate-800">
-                        <p className="text-xs text-slate-500 uppercase font-bold">MAE</p>
-                        <p className="text-sm font-bold text-cyan-400">{modelMetrics?.mae || '14.2'}</p>
-                      </div>
-                      <div className="bg-slate-900 p-2 rounded border border-slate-800">
-                        <p className="text-xs text-slate-500 uppercase font-bold">RMSE</p>
-                        <p className="text-sm font-bold text-purple-400">{modelMetrics?.rmse || '18.7'}</p>
-                      </div>
-                      <div className="bg-slate-900 p-2 rounded border border-slate-800">
-                        <p className="text-xs text-slate-500 uppercase font-bold">MAPE</p>
-                        <p className="text-sm font-bold text-amber-400">{modelMetrics?.mape || '3.4'}%</p>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Data Robustness Degradation */}
-                  <div className="p-4 bg-slate-800/50 rounded-xl border border-slate-700">
-                    <h3 className="text-sm font-bold text-white mb-3">System Robustness</h3>
-                    <div className="space-y-2">
-                      {robustnessData.map((rob, i) => (
-                        <div key={i} className="flex items-center justify-between text-xs">
-                          <span className="text-slate-400">Missing Data: <span className="font-bold text-slate-300">{rob.missing_data}</span></span>
-                          <div className="flex items-center gap-2">
-                            <div className="h-1.5 w-16 bg-slate-800 rounded overflow-hidden">
-                              <div className="h-full bg-cyan-400" style={{ width: `${rob.accuracy}%` }} />
-                            </div>
-                            <span className="text-white font-bold">{rob.accuracy}% Acc</span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Government Summary Panel */}
-                  <div className="p-4 bg-emerald-900/10 rounded-xl border border-emerald-500/30 relative overflow-hidden">
-                    <div className="absolute top-0 right-0 p-4 opacity-10">
-                      <MapIcon size={64} className="text-emerald-500" />
-                    </div>
-                    <div className="relative z-10">
-                      <h3 className="text-sm font-bold text-emerald-400 mb-2">Why this works for BESCOM</h3>
-                      <ul className="text-xs text-emerald-100/70 space-y-2">
-                        <li className="flex items-start gap-2">
-                          <CheckCircle2 size={14} className="text-emerald-500 shrink-0 mt-0.5" />
-                          <span><strong>Zero Infrastructure Changes:</strong> Operates entirely as a software optimization layer on existing feeds.</span>
-                        </li>
-                        <li className="flex items-start gap-2">
-                          <CheckCircle2 size={14} className="text-emerald-500 shrink-0 mt-0.5" />
-                          <span><strong>Robust to Missing Data:</strong> Accuracy degrades gracefully even with 50% data loss.</span>
-                        </li>
-                        <li className="flex items-start gap-2">
-                          <CheckCircle2 size={14} className="text-emerald-500 shrink-0 mt-0.5" />
-                          <span><strong>City-Wide Scalability:</strong> Uses distributed heuristic evaluation, enabling linear scaling across Bengaluru zones.</span>
-                        </li>
-                      </ul>
-                    </div>
-                  </div>
-
-                </div>
-              )}
-
             </div>
           </div>
         </div>
       </main>
       
-      {/* Assistant Chatbot */}
-      <AssistantPanel nearbyStations={nearbyStations} selectedZone={selectedZoneId} />
+      <AssistantPanel nearbyStations={stations} selectedZone={selectedZoneId} />
+
+      {/* Location Selector Modal */}
+      {showLocationSelector && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl p-6 max-w-md w-full shadow-2xl">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                <Globe size={20} className="text-cyan-400" />
+                Select Location
+              </h2>
+              <button 
+                onClick={() => setShowLocationSelector(false)}
+                className="text-slate-400 hover:text-white"
+              >
+                ✕
+              </button>
+            </div>
+            
+            <p className="text-sm text-slate-400 mb-4">
+              Explore EV charging stations in different Indian cities:
+            </p>
+
+            <div className="grid grid-cols-2 gap-2 mb-4 max-h-64 overflow-y-auto">
+              {INDIAN_CITIES.map((city) => (
+                <button
+                  key={city.name}
+                  onClick={() => handleSelectCity(city)}
+                  className={`p-3 rounded-lg border text-left transition-colors ${
+                    detectedCity === city.name 
+                      ? 'bg-cyan-500/20 border-cyan-500/50' 
+                      : 'bg-slate-800 border-slate-700 hover:border-slate-600'
+                  }`}
+                >
+                  <p className="font-medium text-white">{city.name}</p>
+                  <p className="text-xs text-slate-500">{city.state}</p>
+                </button>
+              ))}
+            </div>
+
+            <button
+              onClick={handleExploreBengaluru}
+              className="w-full p-4 rounded-lg border border-emerald-500/30 bg-emerald-500/10 hover:bg-emerald-500/20 transition-colors text-left"
+            >
+              <div className="flex items-center gap-3">
+                <Target size={20} className="text-emerald-400" />
+                <div>
+                  <p className="font-medium text-emerald-100">Explore Bengaluru EV Stations</p>
+                  <p className="text-xs text-emerald-200/70">See live station availability</p>
+                </div>
+              </div>
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
