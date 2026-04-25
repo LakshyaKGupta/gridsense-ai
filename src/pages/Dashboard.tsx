@@ -272,10 +272,16 @@ export default function Dashboard() {
                 <div className="px-4 py-2 border-b border-slate-800 mb-1">
                   <p className="text-xs text-slate-400 truncate">{email}</p>
                 </div>
-                <button className="w-full text-left px-4 py-2 text-sm text-slate-300 hover:bg-slate-800 hover:text-white transition-colors">
+                <button 
+                  onClick={() => alert("User Profile settings module coming soon!")}
+                  className="w-full text-left px-4 py-2 text-sm text-slate-300 hover:bg-slate-800 hover:text-white transition-colors"
+                >
                   My Profile
                 </button>
-                <button className="w-full text-left px-4 py-2 text-sm text-slate-300 hover:bg-slate-800 hover:text-white transition-colors">
+                <button 
+                  onClick={() => alert("Account Configuration module coming soon!")}
+                  className="w-full text-left px-4 py-2 text-sm text-slate-300 hover:bg-slate-800 hover:text-white transition-colors"
+                >
                   Settings
                 </button>
                 <button 
@@ -459,7 +465,7 @@ export default function Dashboard() {
           <div className="rounded-2xl border border-slate-800 bg-slate-900/40 backdrop-blur-sm flex flex-col overflow-hidden">
             <div className="p-5 border-b border-slate-800">
               <h2 className="text-xl font-bold text-white flex items-center gap-2">
-                Zone {selectedZoneId}: {selectedZoneData.name} ({userCity})
+                Zone {selectedZoneId}: {selectedZoneData.name} (Bengaluru)
               </h2>
               <div className="mt-1 flex items-center gap-2 text-sm text-slate-400">
                 <span className="flex items-center gap-1"><Activity size={14}/> {currentZoneDemand?.current_demand.toFixed(1) || '0.0'} kW</span>
