@@ -214,10 +214,28 @@ export default function Dashboard() {
           </a>
           
           <nav className="hidden md:flex items-center gap-1 text-sm font-medium">
-            <button className="rounded-md bg-white/10 px-4 py-2 text-white">Dashboard</button>
-            <button className="rounded-md px-4 py-2 text-slate-400 hover:text-white transition">Simulation</button>
-            <button className="rounded-md px-4 py-2 text-slate-400 hover:text-white transition">Infrastructure</button>
-            <button className="rounded-md px-4 py-2 text-slate-400 hover:text-white transition flex items-center gap-1.5">
+            <button 
+              onClick={() => setActiveTab('insights')}
+              className={`rounded-md px-4 py-2 transition ${activeTab === 'insights' ? 'bg-white/10 text-white' : 'text-slate-400 hover:text-white'}`}
+            >
+              Dashboard
+            </button>
+            <button 
+              onClick={() => setActiveTab('policy')}
+              className={`rounded-md px-4 py-2 transition ${activeTab === 'policy' ? 'bg-white/10 text-white' : 'text-slate-400 hover:text-white'}`}
+            >
+              Simulation
+            </button>
+            <button 
+              onClick={() => setActiveTab('planning')}
+              className={`rounded-md px-4 py-2 transition ${activeTab === 'planning' ? 'bg-white/10 text-white' : 'text-slate-400 hover:text-white'}`}
+            >
+              Infrastructure
+            </button>
+            <button 
+              onClick={() => setActiveTab('failure')}
+              className={`rounded-md px-4 py-2 transition flex items-center gap-1.5 ${activeTab === 'failure' ? 'bg-white/10 text-white' : 'text-slate-400 hover:text-white'}`}
+            >
               Alerts
               {alerts.length > 0 && <span className="flex h-4 w-4 items-center justify-center rounded-full bg-rose-500 text-[10px] text-white">{alerts.length}</span>}
             </button>
