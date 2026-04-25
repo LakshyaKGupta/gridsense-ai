@@ -21,6 +21,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import {
   Alert,
@@ -191,12 +192,12 @@ export default function Dashboard() {
       {/* 1. TOP NAVBAR */}
       <header className="sticky top-0 z-50 flex h-16 items-center justify-between border-b border-white/5 bg-[#0B0F14]/80 px-6 backdrop-blur-xl">
         <div className="flex items-center gap-8">
-          <div className="flex items-center gap-2">
+          <Link to="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
               <Zap size={18} fill="currentColor" />
             </div>
             <span className="text-lg font-bold tracking-tight text-white">GridSense</span>
-          </div>
+          </Link>
           
           <nav className="hidden md:flex items-center gap-1 text-sm font-medium">
             <button className="rounded-md bg-white/10 px-4 py-2 text-white">Dashboard</button>
