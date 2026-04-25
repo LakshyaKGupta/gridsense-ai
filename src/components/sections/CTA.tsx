@@ -1,6 +1,10 @@
 import { motion } from 'framer-motion'
+import { Link } from 'react-router-dom'
+import { useAuth } from '../../context/AuthContext'
 
 export default function CTA() {
+  const { token } = useAuth()
+
   return (
     <div className="cta-wrap" id="cta" style={{
       padding: '120px 0',
@@ -77,30 +81,42 @@ export default function CTA() {
           transition={{ delay: 0.5 }}
           style={{ display: 'flex', gap: 20, flexWrap: 'wrap', justifyContent: 'center' }}
         >
-          <motion.a
+          <motion.div
             whileHover={{ scale: 1.05, y: -2 }}
             whileTap={{ scale: 0.95 }}
-            className="btn btn-green"
-            href="#demo"
             style={{
-              padding: '16px 32px', fontSize: 16, fontWeight: 700,
-              boxShadow: '0 0 30px rgba(0,229,160,0.3)'
+              display: 'inline-flex'
             }}
           >
-            View Live Demo →
-          </motion.a>
-          <motion.a
+            <Link
+              className="btn btn-green"
+              to={token ? '/dashboard' : '/login?mode=login'}
+              style={{
+                padding: '16px 32px', fontSize: 16, fontWeight: 700,
+                boxShadow: '0 0 30px rgba(0,229,160,0.3)'
+              }}
+            >
+              {token ? 'Open Dashboard →' : 'Login →'}
+            </Link>
+          </motion.div>
+          <motion.div
             whileHover={{ scale: 1.05, y: -2 }}
             whileTap={{ scale: 0.95 }}
-            className="btn btn-outline"
-            href="#how"
             style={{
-              padding: '16px 32px', fontSize: 16,
-              border: '2px solid rgba(255,255,255,0.2)'
+              display: 'inline-flex'
             }}
           >
-            Learn More
-          </motion.a>
+            <Link
+              className="btn btn-outline"
+              to={token ? '/dashboard' : '/login?mode=signup'}
+              style={{
+                padding: '16px 32px', fontSize: 16,
+                border: '2px solid rgba(255,255,255,0.2)'
+              }}
+            >
+              {token ? 'Inspect Backend Logic' : 'Sign Up'}
+            </Link>
+          </motion.div>
         </motion.div>
 
         <motion.div

@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { motion } from 'framer-motion'
+import { Link } from 'react-router-dom'
+import { useAuth } from '../../context/AuthContext'
 
 // Enhanced float animations
 const FLOAT_CSS = `
@@ -22,6 +24,7 @@ export default function Hero() {
   const vidRef = useRef<HTMLVideoElement>(null)
   const [vidOp, setVidOp] = useState(1)
   const [heroVisible, setHeroVisible] = useState(false)
+  const { token } = useAuth()
 
   // Inject CSS
   useEffect(() => {
@@ -237,28 +240,34 @@ export default function Hero() {
             whileHover={{ scale: 1.05, y: -3 }}
             whileTap={{ scale: 0.95 }}
             className="btn btn-green"
-            href="#demo"
+            href={token ? '/dashboard' : '/login?mode=login'}
             id="hero-sim-btn"
             style={{
               padding: '18px 36px', fontSize: 16, fontWeight: 700,
               boxShadow: '0 0 40px rgba(0,229,160,0.4)'
             }}
           >
-            View Live Simulation →
+            {token ? 'Open Dashboard →' : 'Login to Dashboard →'}
           </motion.a>
-          <motion.a
+          <motion.div
             whileHover={{ scale: 1.05, y: -3 }}
             whileTap={{ scale: 0.95 }}
-            className="btn btn-outline"
-            href="#cta"
-            id="hero-demo-btn"
             style={{
-              padding: '18px 36px', fontSize: 16,
-              border: '2px solid rgba(255,255,255,0.25)'
+              display: 'inline-flex'
             }}
           >
-            Request Demo
-          </motion.a>
+            <Link
+              className="btn btn-outline"
+              to={token ? '/dashboard' : '/login?mode=signup'}
+              id="hero-demo-btn"
+              style={{
+                padding: '18px 36px', fontSize: 16,
+                border: '2px solid rgba(255,255,255,0.25)'
+              }}
+            >
+              {token ? 'Review Backend Modules' : 'Create Account'}
+            </Link>
+          </motion.div>
         </motion.div>
 
         {/* Enhanced stats bar */}
