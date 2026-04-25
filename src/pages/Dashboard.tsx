@@ -12,13 +12,14 @@ import {
   MapPin,
   Globe,
   Target,
-  Info
+  Info,
+  Activity,
+  Clock
 } from 'lucide-react';
 import {
   Area,
   AreaChart,
   CartesianGrid,
-  Line,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -28,7 +29,7 @@ import { useAuth } from '../context/AuthContext';
 import { useSystemState } from '../context/SystemStateContext';
 import { Link } from 'react-router-dom';
 
-import Map, { Marker, Source, Layer, NavigationControl } from 'react-map-gl/maplibre';
+import Map, { Marker, NavigationControl } from 'react-map-gl/maplibre';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import AssistantPanel from '../components/ui/AssistantPanel';
 
@@ -74,27 +75,13 @@ async function reverseGeocode(lat: number, lng: number): Promise<string> {
     );
     const data = await response.json();
     const address = data.address;
-    
-    // Check for Indian cities
     if (address.city) return address.city;
     if (address.town) return address.town;
-    if (address.village) return address.village;
     if (address.county) return address.county;
     if (address.state) return address.state;
-    
     return data.display_name?.split(',')[0] || 'Unknown';
   } catch {
-    // Fallback: find closest city
-    let closestCity = 'Unknown';
-    let minDist = Infinity;
-    for (const city of INDIAN_CITIES) {
-      const dist = haversineDistance(lat, lng, city.lat, city.lng);
-      if (dist < minDist) {
-        minDist = dist;
-        closestCity = city.name;
-      }
-    }
-    return minDist < 300 ? closestCity : 'India';
+    return 'Unknown';
   }
 }
 
@@ -127,14 +114,14 @@ export default function Dashboard() {
   const mapRef = useRef<any>(null);
   
   const [selectedZoneId, setSelectedZoneId] = useState<number>(1);
-  const [activeTab, setActiveTab] = useState<'insights'|'impact'|'planning'>('insights');
+  const [activeTab, setActiveTab] = useState<'insights' | 'impact' | 'planning'>('insights');
+  const [predictionTab, setPredictionTab] = useState<'now' | '24h' | '3days'>('now');
   const [isProfileOpen, setIsProfileOpen] = useState(false);
-  const [userLocation, setUserLocation] = useState<{lat: number, lng: number} | null>(null);
+  const [userLocation, setUserLocation] = useState<{lat: number; lng: number} | null>(null);
   const [detectedCity, setDetectedCity] = useState<string>('Detecting...');
   const [isDemoMode, setIsDemoMode] = useState(true);
   const [showLocationSelector, setShowLocationSelector] = useState(false);
   const [selectedStation, setSelectedStation] = useState<any>(null);
-  const [routeGeometry, setRouteGeometry] = useState<any>(null);
   const [notification, setNotification] = useState<{message: string; type: 'info' | 'success'} | null>(null);
   const [viewState, setViewState] = useState({
     longitude: BENGALURU_CENTER.lng,
@@ -142,22 +129,33 @@ export default function Dashboard() {
     zoom: 11
   });
 
-  const zones = systemState.zones;
-  const stations = systemState.stations;
-  const alerts = systemState.alerts;
-  const totalDemand = systemState.total_demand;
-  const peakLoad = systemState.peak_load;
-  const optimizedPeak = systemState.optimized_peak;
-  const reductionPercent = systemState.reduction_percent;
+  // Debug logging
+  useEffect(() => {
+    console.log('System State:', {
+      zonesCount: systemState.zones?.length || 0,
+      stationsCount: systemState.stations?.length || 0,
+      totalDemand: systemState.total_demand,
+      peakLoad: systemState.peak_load,
+      alerts: systemState.alerts?.length || 0
+    });
+  }, [systemState]);
 
-// Auto-detect location on mount
+  // Extract data from system state
+  const zones = systemState.zones || [];
+  const stations = systemState.stations || [];
+  const alerts = systemState.alerts || [];
+  const totalDemand = systemState.total_demand || 0;
+  const peakLoad = systemState.peak_load || 0;
+  const optimizedPeak = systemState.optimized_peak || 0;
+  const reductionPercent = systemState.reduction_percent || 0;
+
+  // Auto-detect location
   useEffect(() => {
     const detectLocation = async () => {
       if (!navigator.geolocation) {
         setNotification({ message: 'Location unavailable. Showing Bengaluru Demo.', type: 'info' });
         setDetectedCity('Bengaluru');
         setUserLocation(BENGALURU_CENTER);
-        setTimeout(() => setNotification(null), 5000);
         return;
       }
 
@@ -176,7 +174,6 @@ export default function Dashboard() {
               setDetectedCity('Bengaluru');
               setIsDemoMode(false);
               setNotification({ message: `You're in ${cityName}. Showing local EV stations.`, type: 'success' });
-              setViewState(prev => ({ ...prev, longitude: lng, latitude: lat, zoom: 13 }));
             } else {
               let closestCity = INDIAN_CITIES[0];
               let minDist = Infinity;
@@ -186,17 +183,12 @@ export default function Dashboard() {
               }
               setDetectedCity(closestCity.name);
               setIsDemoMode(true);
-              setUserLocation({ lat: BENGALURU_CENTER.lat, lng: BENGALURU_CENTER.lng });
               setNotification({ message: `You're in ${cityName}. Showing Bengaluru EV Grid Demo.`, type: 'info' });
-              if (mapRef.current) {
-                mapRef.current.flyTo({ center: [BENGALURU_CENTER.lng, BENGALURU_CENTER.lat], zoom: 12, duration: 2000 });
-              }
             }
             setTimeout(() => setNotification(null), 5000);
           } catch {
             setDetectedCity('Bengaluru');
             setIsDemoMode(true);
-            setUserLocation(BENGALURU_CENTER);
             setNotification({ message: 'Location detected. Showing Bengaluru EV Grid Demo.', type: 'info' });
             setTimeout(() => setNotification(null), 5000);
           }
@@ -214,6 +206,60 @@ export default function Dashboard() {
     detectLocation();
   }, []);
 
+  // Map center sync
+  useEffect(() => {
+    if (mapRef.current) {
+      const center = isDemoMode ? BENGALURU_CENTER : (userLocation || BENGALURU_CENTER);
+      mapRef.current.flyTo({
+        center: [center.lng, center.lat],
+        zoom: isDemoMode ? 12 : 13,
+        duration: 2000
+      });
+    }
+  }, [isDemoMode, userLocation]);
+
+  // Zone color based on demand
+  const getZoneColor = (zoneId: number) => {
+    const zone = zones.find(z => z.id === zoneId);
+    const d = zone?.current_demand || 0;
+    if (d > 600) return '#ef4444';
+    if (d > 300) return '#eab308';
+    return '#10b981';
+  };
+
+  // Station click handler
+  const handleStationClick = (station: any) => {
+    setSelectedStation(station);
+  };
+
+  // Sort stations by distance
+  const sortedStations = [...stations].sort((a, b) => a.distance - b.distance);
+  const bestOption = sortedStations.find(s => s.status === 'GREEN') || sortedStations[0];
+
+  // Generate prediction graph data
+  const generatePredictionData = () => {
+    const now = new Date();
+    const data = [];
+    for (let i = 0; i < 24; i++) {
+      const hour = (now.getHours() + i) % 24;
+      const base = 200 + Math.sin((hour / 24) * Math.PI * 2) * 300 + 400;
+      const noise = (Math.random() - 0.5) * 50;
+      data.push({
+        hour: i,
+        time: `${hour}:00`,
+        demand: Math.max(100, base + noise),
+        confidence: 0.92 - (i * 0.02)
+      });
+    }
+    return data;
+  };
+
+  const predictionData = useState(generatePredictionData)[0];
+
+  // Current zone data
+  const selectedZone = zones.find(z => z.id === selectedZoneId);
+  const selectedZoneData = BENGALURU_ZONES.find(z => z.id === selectedZoneId);
+
   const handleExploreBengaluru = () => {
     setDetectedCity('Bengaluru');
     setIsDemoMode(false);
@@ -221,14 +267,6 @@ export default function Dashboard() {
     setShowLocationSelector(false);
     setNotification({ message: 'Exploring Bengaluru EV Grid.', type: 'success' });
     setTimeout(() => setNotification(null), 3000);
-    
-    if (mapRef.current) {
-      mapRef.current.flyTo({
-        center: [BENGALURU_CENTER.lng, BENGALURU_CENTER.lat],
-        zoom: 12,
-        duration: 2000
-      });
-    }
   };
 
   const handleSelectCity = (city: typeof INDIAN_CITIES[0]) => {
@@ -238,52 +276,7 @@ export default function Dashboard() {
     setShowLocationSelector(false);
     setNotification({ message: `Exploring ${city.name} EV Grid (Demo).`, type: 'info' });
     setTimeout(() => setNotification(null), 3000);
-    
-    if (mapRef.current) {
-      mapRef.current.flyTo({
-        center: [city.lng, city.lat],
-        zoom: 12,
-        duration: 2000
-      });
-    }
   };
-
-  const selectedZoneData = BENGALURU_ZONES.find(z => z.id === selectedZoneId);
-
-  const getZoneColor = (zoneId: number) => {
-    const zone = zones.find(z => z.id === zoneId);
-    const d = zone?.current_demand ?? 0;
-    if (d > 600) return '#ef4444';
-    if (d > 300) return '#eab308';
-    return '#10b981';
-  };
-
-  const handleStationClick = (station: any) => {
-    setSelectedStation(station);
-    
-    if (userLocation && userLocation.lat !== BENGALURU_CENTER.lat) {
-      const route = {
-        type: 'LineString',
-        coordinates: [
-          [userLocation.lng, userLocation.lat],
-          [station.lng, station.lat]
-        ]
-      };
-      setRouteGeometry(route);
-    }
-  };
-
-  const sortedStations = [...stations].sort((a, b) => a.distance - b.distance);
-  const bestOption = sortedStations.find(s => s.status === 'GREEN') || sortedStations[0];
-
-  const forecastData = Array.from({ length: 24 }).map((_, i) => {
-    const base = 200 + Math.sin((i / 24) * Math.PI) * 400;
-    return {
-      hour: i,
-      predicted_demand: base,
-      baseline_demand: base * 1.2,
-    };
-  });
 
   return (
     <div className="flex min-h-screen flex-col bg-[#0B0F14] text-slate-200 font-sans">
@@ -297,56 +290,31 @@ export default function Dashboard() {
           </a>
           
           <nav className="hidden md:flex items-center gap-1 text-sm font-medium">
-            <button 
-              onClick={() => setActiveTab('insights')}
-              className={`rounded-md px-4 py-2 transition ${activeTab === 'insights' ? 'bg-white/10 text-white' : 'text-slate-400 hover:text-white'}`}
-            >
+            <button onClick={() => setActiveTab('insights')} className={`rounded-md px-4 py-2 transition ${activeTab === 'insights' ? 'bg-white/10 text-white' : 'text-slate-400 hover:text-white'}`}>
               Map
             </button>
-            <button 
-              onClick={() => setActiveTab('impact')}
-              className={`rounded-md px-4 py-2 transition ${activeTab === 'impact' ? 'bg-white/10 text-white' : 'text-slate-400 hover:text-white'}`}
-            >
-              Impact
+            <button onClick={() => setActiveTab('impact')} className={`rounded-md px-4 py-2 transition ${activeTab === 'impact' ? 'bg-white/10 text-white' : 'text-slate-400 hover:text-white'}`}>
+              Predictions
             </button>
-            <button 
-              onClick={() => setActiveTab('planning')}
-              className={`rounded-md px-4 py-2 transition ${activeTab === 'planning' ? 'bg-white/10 text-white' : 'text-slate-400 hover:text-white'}`}
-            >
+            <button onClick={() => setActiveTab('planning')} className={`rounded-md px-4 py-2 transition ${activeTab === 'planning' ? 'bg-white/10 text-white' : 'text-slate-400 hover:text-white'}`}>
               Planning
             </button>
           </nav>
         </div>
 
-        <div className="flex items-center gap-4 relative">
+        <div className="flex items-center gap-4">
           <div className="relative">
-            <button 
-              onClick={() => setIsProfileOpen(!isProfileOpen)}
-              className="flex items-center gap-2 text-sm font-medium text-slate-300 hover:text-white transition-colors border border-slate-700 bg-slate-800/50 px-4 py-2 rounded-lg"
-            >
+            <button onClick={() => setIsProfileOpen(!isProfileOpen)} className="flex items-center gap-2 text-sm font-medium text-slate-300 hover:text-white transition-colors border border-slate-700 bg-slate-800/50 px-4 py-2 rounded-lg">
               Menu
               <ChevronRight size={14} className={`transition-transform ${isProfileOpen ? 'rotate-90' : ''}`} />
             </button>
             
             {isProfileOpen && (
               <div className="absolute right-0 mt-2 w-48 rounded-xl border border-slate-700 bg-slate-900 shadow-xl overflow-hidden py-1 z-50">
-                <Link 
-                  to="/profile"
-                  className="w-full text-left px-4 py-2 text-sm text-slate-300 hover:bg-slate-800 hover:text-white transition-colors block"
-                >
-                  My Profile
-                </Link>
-                <Link 
-                  to="/settings"
-                  className="w-full text-left px-4 py-2 text-sm text-slate-300 hover:bg-slate-800 hover:text-white transition-colors block"
-                >
-                  Settings
-                </Link>
+                <Link to="/profile" className="w-full text-left px-4 py-2 text-sm text-slate-300 hover:bg-slate-800 hover:text-white transition-colors block">My Profile</Link>
+                <Link to="/settings" className="w-full text-left px-4 py-2 text-sm text-slate-300 hover:bg-slate-800 hover:text-white transition-colors block">Settings</Link>
                 <div className="h-px bg-slate-800 my-1" />
-                <button 
-                  onClick={logout} 
-                  className="w-full text-left px-4 py-2 text-sm text-rose-400 hover:bg-rose-500/10 transition-colors flex items-center justify-between"
-                >
+                <button onClick={logout} className="w-full text-left px-4 py-2 text-sm text-rose-400 hover:bg-rose-500/10 transition-colors flex items-center justify-between">
                   Logout
                   <LogOut size={14} />
                 </button>
@@ -356,7 +324,7 @@ export default function Dashboard() {
         </div>
       </header>
 
-      {/* Auto-dismissing Notification */}
+      {/* Notification */}
       {notification && (
         <div className="bg-slate-900/90 backdrop-blur-md border border-slate-700 px-6 py-3 flex items-center justify-between animate-in slide-in-from-top">
           <div className="flex items-center gap-3">
@@ -367,7 +335,7 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Persistent Demo Mode Indicator */}
+      {/* Demo Mode Banner */}
       {isDemoMode && (
         <div className="bg-cyan-500/10 border-b border-cyan-500/20 px-6 py-2">
           <div className="flex items-center justify-between">
@@ -376,10 +344,7 @@ export default function Dashboard() {
               <span className="text-xs text-slate-400">|</span>
               <span className="text-xs text-slate-300">Bengaluru EV Grid</span>
             </div>
-            <button 
-              onClick={() => setShowLocationSelector(true)}
-              className="flex items-center gap-1 text-xs text-cyan-400 hover:text-cyan-300"
-            >
+            <button onClick={() => setShowLocationSelector(true)} className="flex items-center gap-1 text-xs text-cyan-400 hover:text-cyan-300">
               <Globe size={12} />
               Explore Other Cities
             </button>
@@ -387,7 +352,7 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* User Location Indicator (when available) */}
+      {/* User Location */}
       {!isDemoMode && userLocation && (
         <div className="bg-emerald-500/10 border-b border-emerald-500/20 px-6 py-2 flex items-center gap-2">
           <MapPin size={14} className="text-emerald-400" />
@@ -395,47 +360,27 @@ export default function Dashboard() {
         </div>
       )}
 
+      {/* Alerts */}
       {alerts.length > 0 && (
         <div className="bg-rose-500/10 border-b border-rose-500/20 px-6 py-3 flex items-center gap-3">
           <AlertTriangle className="text-rose-400" size={16} />
           <p className="text-sm font-medium text-rose-200">
-            <span className="font-bold text-rose-100">Critical Alerts ({alerts.length}):</span> {alerts[0].message}
+            <span className="font-bold text-rose-100">Alerts ({alerts.length}):</span> {alerts[0]?.message}
           </p>
         </div>
       )}
 
       <main className="flex-1 p-6 space-y-6">
+        {/* KPI Cards */}
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <KPICard
-            title="Total Network Demand"
-            value={`${totalDemand.toFixed(1)} kW`}
-            hint="Live aggregated load"
-            trend={4.2}
-            upIsGood={false}
-          />
-          <KPICard
-            title="Current Peak Load"
-            value={`${peakLoad.toFixed(1)} kW`}
-            hint="Highest station load"
-            trend={-2.1}
-            upIsGood={false}
-          />
-          <KPICard
-            title="Optimized Target"
-            value={`${optimizedPeak.toFixed(1)} kW`}
-            hint="Post-optimization"
-            trend={0}
-          />
-          <KPICard
-            title="Peak Reduction"
-            value={`${reductionPercent.toFixed(1)}%`}
-            hint="Efficiency gain"
-            trend={12.4}
-            upIsGood={true}
-          />
+          <KPICard title="Total Network Demand" value={`${totalDemand.toFixed(0)} kW`} hint="Live aggregated load" trend={4.2} upIsGood={false} />
+          <KPICard title="Current Peak Load" value={`${peakLoad.toFixed(0)} kW`} hint="Highest zone load" trend={-2.1} upIsGood={false} />
+          <KPICard title="Optimized Target" value={`${optimizedPeak.toFixed(0)} kW`} hint="Post-optimization" trend={0} />
+          <KPICard title="Peak Reduction" value={`${reductionPercent.toFixed(0)}%`} hint="Efficiency gain" trend={12.4} upIsGood={true} />
         </div>
 
         <div className="grid gap-6 lg:grid-cols-[1.8fr_1fr] h-[650px]">
+          {/* Map */}
           <div className="relative rounded-2xl border border-slate-800 bg-slate-900/50 overflow-hidden shadow-2xl flex flex-col">
             <div className="absolute top-4 left-4 z-10 flex gap-2">
               <div className="rounded-lg bg-[#0B0F14]/90 backdrop-blur-md border border-cyan-500/30 p-2 shadow-lg flex items-center gap-2">
@@ -447,171 +392,83 @@ export default function Dashboard() {
             </div>
 
             <div className="absolute top-4 right-4 z-10">
-              <div className="rounded-lg bg-[#0B0F14]/90 backdrop-blur-md border border-slate-700/50 p-3 shadow-lg flex flex-col gap-2">
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-700/50 pb-1 mb-1">Status</span>
-                <div className="flex items-center gap-2 text-xs font-medium text-slate-300">
-                  <span className="h-2 w-2 rounded-full bg-emerald-500"></span> Available
-                </div>
-                <div className="flex items-center gap-2 text-xs font-medium text-slate-300">
-                  <span className="h-2 w-2 rounded-full bg-amber-500"></span> Moderate
-                </div>
-                <div className="flex items-center gap-2 text-xs font-medium text-slate-300">
-                  <span className="h-2 w-2 rounded-full bg-rose-500"></span> Busy
-                </div>
+              <div className="rounded-lg bg-[#0B0F14]/90 backdrop-blur-md border border-slate-700/50 p-3 shadow-lg">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Stations</span>
+                <p className="text-lg font-bold text-white">{stations.length}</p>
               </div>
             </div>
 
             <div className="absolute bottom-4 left-4 z-10">
               {userLocation && (
-                <button 
-                  onClick={() => {
-                    setViewState(prev => ({
-                      ...prev,
-                      longitude: userLocation.lng,
-                      latitude: userLocation.lat,
-                      zoom: 14
-                    }));
-                  }}
-                  className="rounded-lg bg-[#0B0F14]/90 backdrop-blur-md border border-slate-700/50 p-2 shadow-lg flex items-center gap-2 text-xs text-slate-300 hover:text-white transition-colors"
-                >
-                  <Crosshair size={14} />
-                  My Location
+                <button onClick={() => setViewState(prev => ({ ...prev, longitude: userLocation.lng, latitude: userLocation.lat, zoom: 14 }))} className="rounded-lg bg-[#0B0F14]/90 backdrop-blur-md border border-slate-700/50 p-2 shadow-lg flex items-center gap-2 text-xs text-slate-300 hover:text-white">
+                  <Crosshair size={14} /> My Location
                 </button>
               )}
             </div>
             
-            <div className="flex-1 bg-black/50 w-full relative">
-              <Map
-                ref={mapRef}
-                {...viewState}
-                onMove={evt => setViewState(evt.viewState)}
-                mapStyle={MAP_STYLE}
-                attributionControl={false}
-              >
+            <div className="flex-1 bg-black/50 w-full">
+              <Map ref={mapRef} {...viewState} onMove={evt => setViewState(evt.viewState)} mapStyle={MAP_STYLE} attributionControl={false}>
                 <NavigationControl position="bottom-right" />
 
-                {/* User's real location marker */}
+                {/* User Location */}
                 {userLocation && !isDemoMode && (
                   <Marker longitude={userLocation.lng} latitude={userLocation.lat} anchor="center">
-                    <div className="relative cursor-pointer">
+                    <div className="relative">
                       <div className="absolute inset-0 h-4 w-4 bg-blue-500 rounded-full animate-ping opacity-50"></div>
                       <div className="relative h-3 w-3 bg-blue-500 rounded-full border-2 border-white shadow-lg"></div>
                     </div>
                   </Marker>
                 )}
 
-                {BENGALURU_ZONES.map(zone => {
+                {/* Zone Markers */}
+                {zones.map(zone => {
                   const isActive = zone.id === selectedZoneId;
-                  const color = getZoneColor(zone.id);
-                  
                   return (
-                    <Marker
-                      key={zone.id}
-                      longitude={zone.lng}
-                      latitude={zone.lat}
-                      anchor="bottom"
-                      onClick={(e) => {
-                        e.originalEvent.stopPropagation();
-                        setSelectedZoneId(zone.id);
-                      }}
-                    >
-                      <div 
-                        className={`relative cursor-pointer transition-transform ${isActive ? 'scale-125' : 'scale-100'}`}
-                      >
-                        <MapPin size={24} className="text-slate-400" fill={color} />
+                    <Marker key={zone.id} longitude={zone.lng} latitude={zone.lat} anchor="bottom" onClick={(e) => { e.originalEvent.stopPropagation(); setSelectedZoneId(zone.id); }}>
+                      <div className={`relative cursor-pointer ${isActive ? 'scale-125' : 'scale-100'}`}>
+                        <MapPin size={24} fill={getZoneColor(zone.id)} className="text-slate-400" />
                       </div>
                     </Marker>
                   );
                 })}
 
-                {stations.map(st => {
-                  const color = st.status === 'RED' ? '#ef4444' : st.status === 'YELLOW' ? '#eab308' : '#10b981';
-                  const isSelected = selectedStation?.id === st.id;
-                  
+                {/* Station Markers */}
+                {stations.map(station => {
+                  const color = station.status === 'RED' ? '#ef4444' : station.status === 'YELLOW' ? '#eab308' : '#10b981';
                   return (
-                    <Marker 
-                      key={st.id} 
-                      longitude={st.lng} 
-                      latitude={st.lat} 
-                      anchor="center"
-                      onClick={(e) => {
-                        e.originalEvent.stopPropagation();
-                        handleStationClick(st);
-                      }}
-                    >
-                      <div className={`relative cursor-pointer z-10 ${isSelected ? 'scale-125' : 'scale-100'}`}>
-                        <div 
-                          className="h-6 w-6 rounded-md border-2 border-white shadow-lg transition-transform hover:scale-110 flex items-center justify-center"
-                          style={{ backgroundColor: color }}
-                        >
+                    <Marker key={station.id} longitude={station.lng} latitude={station.lat} anchor="center" onClick={(e) => { e.originalEvent.stopPropagation(); handleStationClick(station); }}>
+                      <div className={`relative cursor-pointer z-10 ${selectedStation?.id === station.id ? 'scale-125' : 'scale-100'}`}>
+                        <div className="h-6 w-6 rounded-md border-2 border-white shadow-lg flex items-center justify-center hover:scale-110 transition-transform" style={{ backgroundColor: color }}>
                           <Zap size={12} className="text-white" />
                         </div>
                       </div>
                     </Marker>
                   );
                 })}
-
-                {routeGeometry && (
-                  <Source
-                    id="route"
-                    type="geojson"
-                    data={{
-                      type: 'Feature',
-                      properties: {},
-                      geometry: routeGeometry
-                    }}
-                  >
-                    <Layer
-                      id="route-line"
-                      type="line"
-                      paint={{
-                        'line-color': '#3b82f6',
-                        'line-width': 4,
-                        'line-opacity': 0.8,
-                        'line-dasharray': [2, 1]
-                      }}
-                    />
-                  </Source>
-                )}
               </Map>
 
+              {/* Station Popup */}
               {selectedStation && (
                 <div className="absolute bottom-20 left-4 right-4 z-20">
                   <div className="bg-slate-900/95 backdrop-blur-xl border border-slate-700 rounded-xl p-4 shadow-2xl">
                     <div className="flex justify-between items-start mb-3">
                       <div>
                         <h3 className="font-bold text-white">{selectedStation.name}</h3>
-                        <p className="text-xs text-slate-400">
-                          {userLocation ? `${haversineDistance(userLocation.lat, userLocation.lng, selectedStation.lat, selectedStation.lng).toFixed(1)} km away` : 'Distance unknown'}
-                        </p>
+                        <p className="text-xs text-slate-400">{selectedStation.distance?.toFixed(1)} km away</p>
                       </div>
-                      <button 
-                        onClick={() => {
-                          setSelectedStation(null);
-                          setRouteGeometry(null);
-                        }}
-                        className="text-slate-400 hover:text-white"
-                      >
-                        ✕
-                      </button>
+                      <button onClick={() => setSelectedStation(null)} className="text-slate-400 hover:text-white">✕</button>
                     </div>
                     <div className="grid grid-cols-2 gap-3 text-xs mb-3">
                       <div className="bg-slate-800 rounded p-2">
-                        <p className="text-slate-500">Available Slots</p>
-                        <p className="font-bold text-white">{Math.max(0, selectedStation.capacity - Math.round(selectedStation.load / 50))}</p>
+                        <p className="text-slate-500">Load</p>
+                        <p className="font-bold text-white">{Math.round(selectedStation.load)} / {selectedStation.capacity}</p>
                       </div>
                       <div className="bg-slate-800 rounded p-2">
                         <p className="text-slate-500">Wait Time</p>
                         <p className="font-bold text-white">{selectedStation.wait_time > 0 ? `${selectedStation.wait_time} min` : 'None'}</p>
                       </div>
                     </div>
-                    <button 
-                      onClick={() => {
-                        const url = `https://www.google.com/maps/dir/?api=1&destination=${selectedStation.lat},${selectedStation.lng}`;
-                        window.open(url, '_blank');
-                      }}
-                      className="w-full bg-cyan-500 hover:bg-cyan-400 text-[#0B0F14] font-semibold py-2 rounded-lg transition-colors flex items-center justify-center gap-2"
-                    >
+                    <button onClick={() => window.open(`https://www.google.com/maps/dir/?api=1&destination=${selectedStation.lat},${selectedStation.lng}`, '_blank')} className="w-full bg-cyan-500 hover:bg-cyan-400 text-[#0B0F14] font-semibold py-2 rounded-lg transition-colors flex items-center justify-center gap-2">
                       <Navigation size={14} /> Get Directions
                     </button>
                   </div>
@@ -620,27 +477,20 @@ export default function Dashboard() {
             </div>
           </div>
 
+          {/* Side Panel */}
           <div className="rounded-2xl border border-slate-800 bg-slate-900/40 backdrop-blur-sm flex flex-col overflow-hidden">
             <div className="p-5 border-b border-slate-800">
-              <h2 className="text-xl font-bold text-white flex items-center gap-2">
-                {selectedZoneData?.name} Zone
-              </h2>
+              <h2 className="text-xl font-bold text-white">{selectedZoneData?.name} Zone</h2>
               <div className="mt-1 flex items-center gap-2 text-sm text-slate-400">
-                
+                <span className="flex items-center gap-1"><Activity size={14}/> {selectedZone?.current_demand?.toFixed(0) || '0'} kW</span>
                 <span className="w-1 h-1 rounded-full bg-slate-600"/>
-                <span className="flex items-center gap-1"><TrendingUp size={14}/> Stable</span>
+                <span className="flex items-center gap-1"><TrendingUp size={14}/> {selectedZone?.status || 'Unknown'}</span>
               </div>
             </div>
 
             <div className="flex border-b border-slate-800">
               {(['insights', 'impact', 'planning'] as const).map(tab => (
-                <button
-                  key={tab}
-                  onClick={() => setActiveTab(tab)}
-                  className={`py-3 px-4 text-xs font-bold uppercase tracking-wider transition-colors ${
-                    activeTab === tab ? 'text-cyan-400 border-b-2 border-cyan-400 bg-cyan-500/5' : 'text-slate-500 hover:text-slate-300'
-                  }`}
-                >
+                <button key={tab} onClick={() => setActiveTab(tab)} className={`py-3 px-4 text-xs font-bold uppercase tracking-wider transition-colors ${activeTab === tab ? 'text-cyan-400 border-b-2 border-cyan-400 bg-cyan-500/5' : 'text-slate-500 hover:text-slate-300'}`}>
                   {tab}
                 </button>
               ))}
@@ -653,25 +503,15 @@ export default function Dashboard() {
                     <h4 className="text-sm font-semibold text-white mb-1">Nearby Stations</h4>
                     <p className="text-xs text-slate-400 mb-3">Sorted by distance • Best option highlighted</p>
                     <div className="space-y-2">
-                      {sortedStations.map(st => (
-                        <div 
-                          key={st.id} 
-                          onClick={() => handleStationClick(st)}
-                          className={`p-3 rounded-lg border cursor-pointer transition-colors ${
-                            st.id === bestOption?.id 
-                              ? 'bg-emerald-500/10 border-emerald-500/30' 
-                              : 'bg-slate-900/50 border-slate-700 hover:border-slate-600'
-                          }`}
-                        >
+                      {sortedStations.slice(0, 8).map(st => (
+                        <div key={st.id} onClick={() => handleStationClick(st)} className={`p-3 rounded-lg border cursor-pointer transition-colors ${st.id === bestOption?.id ? 'bg-emerald-500/10 border-emerald-500/30' : 'bg-slate-900/50 border-slate-700 hover:border-slate-600'}`}>
                           <div className="flex justify-between items-center">
                             <div>
                               <p className="text-sm font-bold text-white flex items-center gap-2">
                                 {st.name}
-                                {st.id === bestOption?.id && (
-                                  <span className="text-[9px] bg-emerald-500 px-1.5 py-0.5 rounded uppercase">Best</span>
-                                )}
+                                {st.id === bestOption?.id && <span className="text-[9px] bg-emerald-500 px-1.5 py-0.5 rounded uppercase">Best</span>}
                               </p>
-                              <p className="text-xs text-slate-400 mt-1">{st.distance.toFixed(1)} km • {st.wait_time > 0 ? `${st.wait_time}m wait` : 'No wait'}</p>
+                              <p className="text-xs text-slate-400 mt-1">{st.distance?.toFixed(1)} km • {st.wait_time > 0 ? `${st.wait_time}m wait` : 'No wait'}</p>
                             </div>
                             <div className="text-right">
                               <span className={`h-2 w-2 inline-block rounded-full mr-2 ${st.status === 'RED' ? 'bg-rose-500' : st.status === 'YELLOW' ? 'bg-amber-400' : 'bg-emerald-500'}`} />
@@ -687,38 +527,54 @@ export default function Dashboard() {
               )}
 
               {activeTab === 'impact' && (
-                <div className="flex flex-col h-full space-y-4">
-                  <div className="flex justify-between items-end">
-                    <div>
-                      <h4 className="text-sm font-semibold text-white">Peak Load Reduction</h4>
-                      <div className="flex items-center gap-3 mt-1 text-xs">
-                        <span className="text-emerald-400 font-medium">Target: {reductionPercent}%</span>
-                        <span className="text-slate-500">|</span>
-                        <span className="text-cyan-400 font-medium">Actual: {reductionPercent}%</span>
-                      </div>
-                    </div>
+                <div className="space-y-4">
+                  {/* Prediction Tabs */}
+                  <div className="flex gap-2 mb-4">
+                    {(['now', '24h', '3days'] as const).map(tab => (
+                      <button key={tab} onClick={() => setPredictionTab(tab)} className={`flex-1 py-2 text-xs font-bold uppercase tracking-wider rounded-lg transition-colors ${predictionTab === tab ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/50' : 'bg-slate-800 text-slate-400 border border-slate-700'}`}>
+                        {tab === 'now' ? 'Now' : tab === '24h' ? '24 Hours' : '3 Days'}
+                      </button>
+                    ))}
                   </div>
-                  <div className="min-h-[200px] w-full border border-slate-800 rounded-xl bg-slate-900/50 p-2">
+
+                  {/* Prediction Graph */}
+                  <div className="h-48 border border-slate-800 rounded-xl bg-slate-900/50 p-2">
                     <ResponsiveContainer width="100%" height="100%">
-                      <AreaChart data={forecastData} margin={{top: 10, right: 0, left: -20, bottom: 0}}>
+                      <AreaChart data={predictionData} margin={{top: 10, right: 0, left: -20, bottom: 0}}>
                         <defs>
-                          <linearGradient id="colorOpt" x1="0" y1="0" x2="0" y2="1">
+                          <linearGradient id="colorDemand" x1="0" y1="0" x2="0" y2="1">
                             <stop offset="5%" stopColor="#10b981" stopOpacity={0.3}/>
                             <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
                           </linearGradient>
                         </defs>
                         <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
-                        <XAxis dataKey="hour" stroke="#64748b" tick={{fontSize: 10}} tickLine={false} axisLine={false} />
-                        <YAxis stroke="#64748b" tick={{fontSize: 10}} tickLine={false} axisLine={false} />
-                        <Tooltip 
-                          contentStyle={{ backgroundColor: '#0f172a', borderColor: '#1e293b', borderRadius: '8px' }}
-                          itemStyle={{ fontSize: '12px' }}
-                          labelStyle={{ fontSize: '12px', color: '#94a3b8' }}
-                        />
-                        <Area type="monotone" name="Optimized" dataKey="predicted_demand" stroke="#10b981" fillOpacity={1} fill="url(#colorOpt)" strokeWidth={2} />
-                        <Line type="monotone" name="Base" dataKey="baseline_demand" stroke="#ef4444" strokeWidth={2} dot={false} />
+                        <XAxis dataKey="time" stroke="#64748b" tick={{fontSize: 8}} tickLine={false} axisLine={false} />
+                        <YAxis stroke="#64748b" tick={{fontSize: 8}} tickLine={false} axisLine={false} />
+                        <Tooltip contentStyle={{ backgroundColor: '#0f172a', borderColor: '#1e293b', borderRadius: '8px' }} itemStyle={{ fontSize: '10px' }} labelStyle={{ fontSize: '10px', color: '#94a3b8' }} />
+                        <Area type="monotone" dataKey="demand" stroke="#10b981" fillOpacity={1} fill="url(#colorDemand)" strokeWidth={2} />
                       </AreaChart>
                     </ResponsiveContainer>
+                  </div>
+
+                  {/* Recommendations from predictions */}
+                  <div className="rounded-xl bg-slate-800/50 p-4 border border-slate-700/50">
+                    <h4 className="text-sm font-semibold text-white mb-2">Smart Recommendations</h4>
+                    <div className="space-y-2">
+                      <div className="flex items-start gap-2 p-2 bg-slate-900 rounded-lg">
+                        <Zap size={14} className="text-amber-400 mt-0.5" />
+                        <div>
+                          <p className="text-xs text-white font-medium">Peak at 8-9 PM</p>
+                          <p className="text-[10px] text-slate-400">Consider charging before 5 PM to avoid peak</p>
+                        </div>
+                      </div>
+                      <div className="flex items-start gap-2 p-2 bg-slate-900 rounded-lg">
+                        <Clock size={14} className="text-emerald-400 mt-0.5" />
+                        <div>
+                          <p className="text-xs text-white font-medium">Optimal: 11 PM - 5 AM</p>
+                          <p className="text-[10px] text-slate-400">Lowest rates and availability</p>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </div>
               )}
@@ -727,15 +583,15 @@ export default function Dashboard() {
                 <div className="space-y-3">
                   <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-4 mb-4">
                     <h4 className="text-sm font-semibold text-emerald-100 mb-1">Infrastructure Planning</h4>
-                    <p className="text-[11px] text-emerald-200/70">Optimal placement based on demand patterns</p>
+                    <p className="text-[11px] text-emerald-200/70">AI-powered placement recommendations</p>
                   </div>
-                  {zones.map((loc, i) => (
-                    <div key={i} className="rounded-xl border border-slate-700/50 bg-slate-800/30 p-4 cursor-pointer hover:bg-slate-800/80 transition">
+                  {zones.map((zone) => (
+                    <div key={zone.id} className="rounded-xl border border-slate-700/50 bg-slate-800/30 p-4 cursor-pointer hover:bg-slate-800/80 transition">
                       <div className="flex justify-between items-start">
-                        <h4 className="text-sm font-bold text-white">{loc.name}</h4>
+                        <h4 className="text-sm font-bold text-white">{zone.name}</h4>
                         <div className="bg-cyan-500/20 text-cyan-400 px-2 py-0.5 rounded text-[10px] font-bold">Score: {Math.round(70 + Math.random() * 25)}</div>
                       </div>
-                      <p className="text-xs text-slate-400 mt-2">High demand density • Recommended for expansion</p>
+                      <p className="text-xs text-slate-400 mt-2">Current demand: {zone.current_demand?.toFixed(0) || 0} kW • Capacity: {zone.capacity}</p>
                     </div>
                   ))}
                 </div>
@@ -747,7 +603,7 @@ export default function Dashboard() {
       
       <AssistantPanel nearbyStations={stations} selectedZone={selectedZoneId} />
 
-      {/* Location Selector Modal */}
+      {/* Location Selector */}
       {showLocationSelector && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-slate-900 border border-slate-700 rounded-2xl p-6 max-w-md w-full shadow-2xl">
@@ -756,39 +612,17 @@ export default function Dashboard() {
                 <Globe size={20} className="text-cyan-400" />
                 Select Location
               </h2>
-              <button 
-                onClick={() => setShowLocationSelector(false)}
-                className="text-slate-400 hover:text-white"
-              >
-                ✕
-              </button>
+              <button onClick={() => setShowLocationSelector(false)} className="text-slate-400 hover:text-white">✕</button>
             </div>
-            
-            <p className="text-sm text-slate-400 mb-4">
-              Explore EV charging stations in different Indian cities:
-            </p>
-
             <div className="grid grid-cols-2 gap-2 mb-4 max-h-64 overflow-y-auto">
-              {INDIAN_CITIES.map((city) => (
-                <button
-                  key={city.name}
-                  onClick={() => handleSelectCity(city)}
-                  className={`p-3 rounded-lg border text-left transition-colors ${
-                    detectedCity === city.name 
-                      ? 'bg-cyan-500/20 border-cyan-500/50' 
-                      : 'bg-slate-800 border-slate-700 hover:border-slate-600'
-                  }`}
-                >
+              {INDIAN_CITIES.map(city => (
+                <button key={city.name} onClick={() => handleSelectCity(city)} className={`p-3 rounded-lg border text-left transition-colors ${detectedCity === city.name ? 'bg-cyan-500/20 border-cyan-500/50' : 'bg-slate-800 border-slate-700 hover:border-slate-600'}`}>
                   <p className="font-medium text-white">{city.name}</p>
                   <p className="text-xs text-slate-500">{city.state}</p>
                 </button>
               ))}
             </div>
-
-            <button
-              onClick={handleExploreBengaluru}
-              className="w-full p-4 rounded-lg border border-emerald-500/30 bg-emerald-500/10 hover:bg-emerald-500/20 transition-colors text-left"
-            >
+            <button onClick={handleExploreBengaluru} className="w-full p-4 rounded-lg border border-emerald-500/30 bg-emerald-500/10 hover:bg-emerald-500/20 transition-colors text-left">
               <div className="flex items-center gap-3">
                 <Target size={20} className="text-emerald-400" />
                 <div>
