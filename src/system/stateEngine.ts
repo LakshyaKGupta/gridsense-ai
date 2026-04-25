@@ -1,4 +1,4 @@
-// Central State Engine - uses backend time-series API
+// Central State Engine - uses backend real EV stations API
 const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8000';
 
 export type Zone = {
@@ -9,8 +9,6 @@ export type Zone = {
   capacity: number;
   current_demand: number;
   status: 'GREEN' | 'YELLOW' | 'RED';
-  predictions?: any;
-  recommendations?: any[];
 };
 
 export type Station = {
@@ -23,12 +21,8 @@ export type Station = {
   status: 'GREEN' | 'YELLOW' | 'RED';
   distance: number;
   wait_time: number;
-};
-
-export type DemandPoint = {
-  zone_id: number;
-  demand: number;
-  timestamp: string;
+  operator?: string;
+  source?: string;
 };
 
 export type Alert = {
@@ -50,9 +44,10 @@ export type SystemState = {
   timestamp: string;
   current_hour: number;
   scenario: string | null;
+  data_source: 'real' | 'fallback';
 };
 
-// Fallback data for offline/error state
+// Fallback data
 const fallbackState: SystemState = {
   zones: [
     { id: 1, name: 'Indiranagar', lat: 12.9784, lng: 77.6408, capacity: 1000, current_demand: 450, status: 'GREEN' },
@@ -69,29 +64,45 @@ const fallbackState: SystemState = {
   alerts: [],
   timestamp: new Date().toISOString(),
   current_hour: new Date().getHours(),
-  scenario: 'normal'
+  scenario: 'normal',
+  data_source: 'fallback'
 };
 
-// Fetch from backend API
+// State management
 let cachedState: SystemState = fallbackState;
+let isFetching = false;
 
 export async function fetchSystemState(): Promise<SystemState> {
+  if (isFetching) return cachedState;
+  
+  isFetching = true;
+  
   try {
-    const response = await fetch(`${API_URL}/system/state`, {
-      headers: { 'Content-Type': 'application/json' }
+    const response = await fetch(`${API_URL}/ev/state`, {
+      headers: { 'Content-Type': 'application/json' },
+      signal: AbortSignal.timeout(10000)
     });
     
     if (!response.ok) {
-      console.warn('System API unavailable, using fallback data');
+      console.warn('EV State API unavailable, using fallback');
       return fallbackState;
     }
     
     const data = await response.json();
     cachedState = data as SystemState;
+    
+    console.log('System State:', {
+      zonesCount: cachedState.zones?.length || 0,
+      stationsCount: cachedState.stations?.length || 0,
+      dataSource: cachedState.data_source
+    });
+    
     return cachedState;
   } catch (error) {
     console.warn('System state fetch failed:', error);
     return fallbackState;
+  } finally {
+    isFetching = false;
   }
 }
 
@@ -99,24 +110,27 @@ export function getCachedState(): SystemState {
   return cachedState;
 }
 
-// Background fetch with caching
-let started = false;
+// Subscription system
 let listeners: ((state: SystemState) => void)[] = [];
 
 export function subscribeSystemState(listener: (state: SystemState) => void): () => void {
   listeners.push(listener);
-  listener(cachedState); // immediate callback with current state
+  listener(cachedState);
+  
   return () => {
-    const i = listeners.indexOf(listener);
-    if (i >= 0) listeners.splice(i, 1);
+    const idx = listeners.indexOf(listener);
+    if (idx >= 0) listeners.splice(idx, 1);
   };
 }
 
-export function emitState() {
+function emitState() {
   for (const listener of listeners) {
     listener(cachedState);
   }
 }
+
+// Start polling engine
+let started = false;
 
 export function startSystemEngine() {
   if (started) return;
@@ -132,11 +146,23 @@ export function startSystemEngine() {
   }, 3000);
 }
 
-// For debugging
+// Debug helpers
 export async function getRawData() {
   try {
-    const response = await fetch(`${API_URL}/system/validation/raw`);
+    const response = await fetch(`${API_URL}/ev/stations`);
     if (response.ok) return await response.json();
   } catch {}
   return null;
+}
+
+export async function setDemoScenario(scenario: string) {
+  try {
+    await fetch(`${API_URL}/ev/scenario`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ scenario })
+    });
+    // Refresh state after scenario change
+    await fetchSystemState();
+  } catch {}
 }

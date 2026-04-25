@@ -20,7 +20,8 @@ export const SystemStateProvider = ({ children }: { children: React.ReactNode })
     alerts: [], 
     timestamp: '',
     current_hour: 0,
-    scenario: null
+    scenario: null,
+    data_source: 'fallback'
   });
 
   useEffect(() => {
