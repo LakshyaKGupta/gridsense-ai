@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import startSystemEngine, { subscribeSystemState, SystemState } from '../system/stateEngine';
+import { startSystemEngine, subscribeSystemState, SystemState } from '../system/stateEngine';
 
 type SystemStateShape = SystemState;
 
@@ -10,7 +10,18 @@ type SystemStateContextValue = {
 const SystemStateContext = createContext<SystemStateContextValue | undefined>(undefined);
 
 export const SystemStateProvider = ({ children }: { children: React.ReactNode }) => {
-  const [state, setState] = useState<SystemStateShape>({ zones: [], stations: [], demand: [], predictions: [], alerts: [], timestamp: '' });
+  const [state, setState] = useState<SystemStateShape>({ 
+    zones: [], 
+    stations: [], 
+    total_demand: 0, 
+    peak_load: 0, 
+    optimized_peak: 0, 
+    reduction_percent: 0, 
+    alerts: [], 
+    timestamp: '',
+    current_hour: 0,
+    scenario: null
+  });
 
   useEffect(() => {
     // Start the engine on first mount

@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
 import {
-  Activity,
   AlertTriangle,
   ArrowDown,
   ArrowUp,
@@ -145,8 +144,11 @@ export default function Dashboard() {
 
   const zones = systemState.zones;
   const stations = systemState.stations;
-  const demand = systemState.demand;
   const alerts = systemState.alerts;
+  const totalDemand = systemState.total_demand;
+  const peakLoad = systemState.peak_load;
+  const optimizedPeak = systemState.optimized_peak;
+  const reductionPercent = systemState.reduction_percent;
 
 // Auto-detect location on mount
   useEffect(() => {
@@ -246,16 +248,11 @@ export default function Dashboard() {
     }
   };
 
-  const totalDemand = demand.reduce((acc, d) => acc + d.demand, 0);
-  const peakLoad = Math.max(...stations.map(s => s.load), 0);
-  const optimizedPeak = Math.round(peakLoad * 0.85);
-  const reductionPercent = Math.round(((peakLoad - optimizedPeak) / peakLoad) * 100);
-
   const selectedZoneData = BENGALURU_ZONES.find(z => z.id === selectedZoneId);
-  const currentZoneDemand = demand.find(d => d.zone_id === selectedZoneId);
 
   const getZoneColor = (zoneId: number) => {
-    const d = demand.find(x => x.zone_id === zoneId)?.demand ?? 0;
+    const zone = zones.find(z => z.id === zoneId);
+    const d = zone?.current_demand ?? 0;
     if (d > 600) return '#ef4444';
     if (d > 300) return '#eab308';
     return '#10b981';
@@ -629,7 +626,7 @@ export default function Dashboard() {
                 {selectedZoneData?.name} Zone
               </h2>
               <div className="mt-1 flex items-center gap-2 text-sm text-slate-400">
-                <span className="flex items-center gap-1"><Activity size={14}/> {currentZoneDemand?.demand.toFixed(1) || '0.0'} kW</span>
+                
                 <span className="w-1 h-1 rounded-full bg-slate-600"/>
                 <span className="flex items-center gap-1"><TrendingUp size={14}/> Stable</span>
               </div>

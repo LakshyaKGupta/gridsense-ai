@@ -1,13 +1,16 @@
-// Central State Engine (Client-side Simulation)
-// This module implements a tiny global state machine that acts as the single source of truth
-// for the frontend. It updates every 3-5 seconds and notifies subscribers.
+// Central State Engine - uses backend time-series API
+const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8000';
 
 export type Zone = {
   id: number;
   name: string;
   lat: number;
   lng: number;
-  capacity?: number;
+  capacity: number;
+  current_demand: number;
+  status: 'GREEN' | 'YELLOW' | 'RED';
+  predictions?: any;
+  recommendations?: any[];
 };
 
 export type Station = {
@@ -28,12 +31,6 @@ export type DemandPoint = {
   timestamp: string;
 };
 
-export type PredictionPoint = {
-  zone_id: number;
-  predicted_demand: number;
-  timestamp: string;
-};
-
 export type Alert = {
   zone_id: number;
   alert_type: string;
@@ -45,124 +42,101 @@ export type Alert = {
 export type SystemState = {
   zones: Zone[];
   stations: Station[];
-  demand: DemandPoint[];
-  predictions: PredictionPoint[];
+  total_demand: number;
+  peak_load: number;
+  optimized_peak: number;
+  reduction_percent: number;
   alerts: Alert[];
   timestamp: string;
+  current_hour: number;
+  scenario: string | null;
 };
 
-// Initialize with a Bengaluru-like layout (demo-friendly data)
-const initialZones: Zone[] = [
-  { id: 1, name: 'Indiranagar', lat: 12.97, lng: 77.64, capacity: 1000 },
-  { id: 2, name: 'Koramangala', lat: 12.92, lng: 77.63, capacity: 1000 },
-  { id: 3, name: 'Whitefield', lat: 12.97, lng: 77.75, capacity: 1000 },
-  { id: 4, name: 'Electronic City', lat: 12.83, lng: 77.67, capacity: 1000 },
-  { id: 5, name: 'Jayanagar', lat: 12.93, lng: 77.58, capacity: 1000 },
-];
-
-const initialStations: Station[] = [
-  { id: 1, name: 'Station A', lat: 12.97, lng: 77.64, load: 120, capacity: 300, status: 'GREEN', distance: 2.0, wait_time: 0 },
-  { id: 2, name: 'Station B', lat: 12.96, lng: 77.63, load: 180, capacity: 400, status: 'YELLOW', distance: 3.5, wait_time: 2 },
-  { id: 3, name: 'Station C', lat: 12.95, lng: 77.65, load: 260, capacity: 500, status: 'GREEN', distance: 4.2, wait_time: 1 },
-  { id: 4, name: 'Station D', lat: 12.98, lng: 77.66, load: 80, capacity: 250, status: 'GREEN', distance: 1.8, wait_time: 0 },
-];
-
-export const system_state: SystemState = {
-  zones: initialZones,
-  stations: initialStations,
-  demand: [],
-  predictions: [],
+// Fallback data for offline/error state
+const fallbackState: SystemState = {
+  zones: [
+    { id: 1, name: 'Indiranagar', lat: 12.9784, lng: 77.6408, capacity: 1000, current_demand: 450, status: 'GREEN' },
+    { id: 2, name: 'Koramangala', lat: 12.9279, lng: 77.6271, capacity: 1000, current_demand: 520, status: 'YELLOW' },
+    { id: 3, name: 'Whitefield', lat: 12.9698, lng: 77.7499, capacity: 1000, current_demand: 680, status: 'RED' },
+    { id: 4, name: 'Electronic City', lat: 12.8399, lng: 77.6770, capacity: 1000, current_demand: 380, status: 'GREEN' },
+    { id: 5, name: 'Jayanagar', lat: 12.9299, lng: 77.5826, capacity: 1000, current_demand: 420, status: 'GREEN' },
+  ],
+  stations: [],
+  total_demand: 2450,
+  peak_load: 680,
+  optimized_peak: 2000,
+  reduction_percent: 18,
   alerts: [],
   timestamp: new Date().toISOString(),
+  current_hour: new Date().getHours(),
+  scenario: 'normal'
 };
 
-type Listener = (state: SystemState) => void;
-const listeners: Listener[] = [];
+// Fetch from backend API
+let cachedState: SystemState = fallbackState;
 
+export async function fetchSystemState(): Promise<SystemState> {
+  try {
+    const response = await fetch(`${API_URL}/system/state`, {
+      headers: { 'Content-Type': 'application/json' }
+    });
+    
+    if (!response.ok) {
+      console.warn('System API unavailable, using fallback data');
+      return fallbackState;
+    }
+    
+    const data = await response.json();
+    cachedState = data as SystemState;
+    return cachedState;
+  } catch (error) {
+    console.warn('System state fetch failed:', error);
+    return fallbackState;
+  }
+}
+
+export function getCachedState(): SystemState {
+  return cachedState;
+}
+
+// Background fetch with caching
 let started = false;
+let listeners: ((state: SystemState) => void)[] = [];
 
-function emit() {
-  const snapshot = getSystemState();
-  for (const l of listeners) l(snapshot);
-}
-
-function getSystemState(): SystemState {
-  // return a deep-ish copy to avoid accidental mutation by consumers
-  return JSON.parse(JSON.stringify(system_state)) as SystemState;
-}
-
-export function subscribeSystemState(listener: Listener): () => void {
+export function subscribeSystemState(listener: (state: SystemState) => void): () => void {
   listeners.push(listener);
-  // immediately notify new subscriber with current state
-  listener(getSystemState());
+  listener(cachedState); // immediate callback with current state
   return () => {
     const i = listeners.indexOf(listener);
     if (i >= 0) listeners.splice(i, 1);
   };
 }
 
+export function emitState() {
+  for (const listener of listeners) {
+    listener(cachedState);
+  }
+}
+
 export function startSystemEngine() {
   if (started) return;
   started = true;
-
-  function updateSystemState() {
-    // Update station loads with small random deltas
-    for (const s of system_state.stations) {
-      const delta = (Math.random() - 0.5) * 40; // +/- 20
-      s.load = Math.max(0, Math.min(s.capacity, s.load + delta));
-      // Update status based on load ratio
-      const ratio = s.load / s.capacity;
-      s.status = ratio > 0.85 ? 'RED' : ratio > 0.6 ? 'YELLOW' : 'GREEN';
-      // Simple distance jitter to simulate proximity changes
-      s.distance = Math.max(0.5, s.distance + (Math.random() - 0.5) * 0.2);
-      // Wait times fluctuate a bit
-      s.wait_time = Math.max(0, Math.round((s.wait_time + (Math.random() - 0.5) * 1.5) * 10) / 10);
-    }
-
-    // Update zone demand values
-    // Ensure each zone has a current demand point
-    for (const z of system_state.zones) {
-      const factor = 0.9 + Math.random() * 0.3; // 0.9 - 1.2
-      const current = system_state.demand.find(d => d.zone_id === z.id)?.demand ?? 300;
-      const updated = Math.max(0, current * factor + (Math.random() - 0.5) * 40);
-      const dp: DemandPoint = { zone_id: z.id, demand: updated, timestamp: new Date().toISOString() } as DemandPoint;
-      // replace or push
-      const existing = system_state.demand.find(d => d.zone_id === z.id);
-      if (existing) {
-        existing.demand = updated;
-        existing.timestamp = dp.timestamp;
-      } else {
-        system_state.demand.push(dp);
-      }
-    }
-
-    // Update predictions from current demand
-    system_state.predictions = system_state.zones.map(z => {
-      const current = system_state.demand.find(d => d.zone_id === z.id)?.demand ?? 300;
-      const predicted = current * (0.95 + Math.random() * 0.1);
-      return { zone_id: z.id, predicted_demand: predicted, timestamp: new Date().toISOString() } as PredictionPoint;
-    });
-
-    // Generate simple alerts if heavy demand
-    const alerts: Alert[] = [];
-    for (const z of system_state.zones) {
-      const current = system_state.demand.find(d => d.zone_id === z.id)?.demand ?? 0;
-      const threshold = (z.capacity ?? 1000) * 0.9;
-      if (current > threshold) {
-        alerts.push({ zone_id: z.id, alert_type: 'Overload', severity: 'High', message: `Zone ${z.name} overload (${current.toFixed(0)}).`, timestamp: new Date().toISOString() });
-      }
-    }
-    system_state.alerts = alerts;
-
-    system_state.timestamp = new Date().toISOString();
-    emit();
-  }
-
-  // Seed initial update and then run on a 3-5s interval (randomized a bit)
-  updateSystemState();
-  setInterval(() => {
-    updateSystemState();
-  }, 3500);
+  
+  // Initial fetch
+  fetchSystemState().then(emitState);
+  
+  // Poll every 3 seconds
+  setInterval(async () => {
+    await fetchSystemState();
+    emitState();
+  }, 3000);
 }
 
-export default startSystemEngine;
+// For debugging
+export async function getRawData() {
+  try {
+    const response = await fetch(`${API_URL}/system/validation/raw`);
+    if (response.ok) return await response.json();
+  } catch {}
+  return null;
+}

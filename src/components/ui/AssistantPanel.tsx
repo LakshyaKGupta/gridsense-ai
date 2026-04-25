@@ -34,7 +34,7 @@ export default function AssistantPanel({ }: AssistantPanelProps) {
       const lowerInput = userMsg.toLowerCase();
       const stations = systemState.stations;
       const alerts = systemState.alerts;
-      const totalDemand = systemState.demand.reduce((acc, d) => acc + d.demand, 0);
+      const totalDemand = systemState.total_demand;
       
       if (lowerInput.includes('where') && lowerInput.includes('charge')) {
         const sortedByDistance = [...stations].sort((a, b) => a.distance - b.distance);
