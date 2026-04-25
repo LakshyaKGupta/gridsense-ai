@@ -1,6 +1,6 @@
 import { motion } from 'framer-motion'
 import { Link } from 'react-router-dom'
-import { Zap, Activity, Shield, BarChart3, Settings2 } from 'lucide-react'
+import { Zap } from 'lucide-react'
 
 export default function LiveDemo() {
   return (

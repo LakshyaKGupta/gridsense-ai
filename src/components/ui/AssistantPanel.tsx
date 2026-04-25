@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { MessageSquare, Send, X, Bot } from 'lucide-react';
 import { NearbyStation } from '../../services/api';
 
@@ -29,7 +29,7 @@ export default function AssistantPanel({ nearbyStations, selectedZone }: Assista
       if (lowerInput.includes('where') && lowerInput.includes('charge')) {
         const best = nearbyStations.find(s => s.is_best_option);
         if (best) {
-          response = `I recommend heading to **${best.name}**. It's only ${best.distance_km}km away and currently has ${best.queue_time > 0 ? a + ' min wait' : 'no wait time'}. It's running at optimal capacity.`;
+          response = `I recommend heading to **${best.name}**. It's only ${best.distance_km}km away and currently has ${best.queue_time && best.queue_time > 0 ? best.queue_time + ' min wait' : 'no wait time'}. It's running at optimal capacity.`;
         } else {
           response = "I don't see any nearby stations right now. Make sure your location is enabled!";
         }

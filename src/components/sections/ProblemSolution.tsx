@@ -1,4 +1,3 @@
-import { motion, useScroll, useTransform } from 'framer-motion'
 import { useRef } from 'react'
 import { BatteryWarning, TrendingUp, AlertTriangle } from 'lucide-react'
 
@@ -57,8 +56,6 @@ export default function ProblemSolution() {
 }
 
 function Card({ card, i, total }: { card: any, i: number, total: number }) {
-  const targetScale = 1 - ( (total - i) * 0.05 );
-  
   return (
     <div 
       className="sticky top-32 w-full flex justify-center mt-12"

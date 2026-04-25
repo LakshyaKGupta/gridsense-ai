@@ -22,6 +22,8 @@ export interface RealtimeSnapshot {
   current_demand: number;
   trend: 'increasing' | 'decreasing' | 'stable';
   timestamp: string;
+  predicted_demand?: number;
+  active_sessions?: number;
 }
 
 export interface DashboardData {
@@ -128,6 +130,10 @@ export interface NearbyStation {
   status: 'GREEN' | 'YELLOW' | 'RED';
   recommendation_flag: boolean;
   distance_km: number;
+  queue_time?: number;
+  predicted_peak_time?: string;
+  recommendation?: string;
+  is_best_option?: boolean;
 }
 
 export interface DemoScenario {

@@ -21,7 +21,6 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
-import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import {
   Alert,
@@ -409,7 +408,7 @@ export default function Dashboard() {
                               </div>
                               <div className="flex justify-between text-xs">
                                 <span className="text-slate-400">Wait Time</span>
-                                <span className="font-medium text-slate-200">{st.queue_time > 0 ? `${st.queue_time} mins` : 'No Queue'}</span>
+                                <span className="font-medium text-slate-200">{(st.queue_time || 0) > 0 ? `${st.queue_time} mins` : 'No Queue'}</span>
                               </div>
                               <div className="flex justify-between text-xs">
                                 <span className="text-slate-400">Peak Time</span>
@@ -497,7 +496,7 @@ export default function Dashboard() {
                                 {st.name}
                                 {st.is_best_option && <span className="text-[9px] bg-emerald-500 text-white px-1.5 py-0.5 rounded uppercase tracking-wider">Fastest</span>}
                               </p>
-                              <p className="text-xs text-slate-400 mt-1">{st.distance_km} km away • {st.queue_time > 0 ? `${st.queue_time}m wait` : 'No wait'}</p>
+                              <p className="text-xs text-slate-400 mt-1">{st.distance_km} km away • {(st.queue_time || 0) > 0 ? `${st.queue_time}m wait` : 'No wait'}</p>
                             </div>
                             <div className="text-right">
                               <span className={`h-2 w-2 inline-block rounded-full mr-2 ${st.status === 'RED' ? 'bg-rose-500' : st.status === 'YELLOW' ? 'bg-amber-400' : 'bg-emerald-500'}`} />
