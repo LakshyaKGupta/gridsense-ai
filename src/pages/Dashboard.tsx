@@ -434,6 +434,32 @@ export default function Dashboard() {
                     <h4 className="text-sm font-semibold text-white mb-1">Infrastructure Load</h4>
                     <p className="text-sm text-slate-400">2 nearby charging hubs are operating at 95% capacity. Grid strain is moderate.</p>
                   </div>
+                  
+                  {/* Demand Forecast Info */}
+                  <div className="rounded-xl bg-slate-800/50 p-4 border border-slate-700/50">
+                    <p className="text-xs text-slate-400 mb-1 uppercase font-bold">Predicted Target Demand</p>
+                    <p className="mt-1 text-2xl font-bold text-white flex items-center gap-2">
+                      {currentZoneDemand?.predicted_demand?.toFixed(1) || '--'} <span className="text-sm font-medium text-slate-500">kW</span>
+                    </p>
+                    
+                    {/* Error Range Display */}
+                    {currentForecast?.forecasts && currentForecast.forecasts[0]?.error_range && (
+                      <div className="flex items-center gap-3 mt-2">
+                        <p className="text-[10px] text-cyan-500/70 font-semibold uppercase tracking-wider bg-cyan-500/10 px-2 py-1 rounded">
+                          Range: [{currentForecast.forecasts[0].error_range[0].toFixed(0)} - {currentForecast.forecasts[0].error_range[1].toFixed(0)}]
+                        </p>
+                        {currentForecast.forecasts[0].confidence_tier && (
+                          <span className={`text-[9px] px-1.5 py-1 rounded font-bold uppercase ${
+                            currentForecast.forecasts[0].confidence_tier === 'High' ? 'bg-emerald-500/20 text-emerald-400' :
+                            currentForecast.forecasts[0].confidence_tier === 'Medium' ? 'bg-amber-500/20 text-amber-400' :
+                            'bg-rose-500/20 text-rose-400'
+                          }`}>
+                            {currentForecast.forecasts[0].confidence_tier} Confidence
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
 
@@ -484,30 +510,11 @@ export default function Dashboard() {
                       <div className="bg-slate-900 p-2 rounded text-center">
                         <p className="text-xs text-slate-500 mb-1">Time Factor</p>
                         <p className="text-sm font-bold text-purple-400">{realisticImpact?.explanation?.time_factor || 0.3}</p>
-                      {/* Demand Forecast Info */}
-                    <div className="flex-1">
-                      <p className="text-xs text-slate-400">Predicted Demand</p>
-                      <p className="mt-1 text-2xl font-bold text-white flex items-center gap-2">
-                        {currentZoneDemand?.predicted_demand?.toFixed(1) || '--'} <span className="text-sm font-medium text-slate-500">kW</span>
-                      </p>
-                      
-                      {/* Error Range Display */}
-                      {currentForecast?.forecasts && currentForecast.forecasts[0]?.error_range && (
-                        <div className="flex items-center gap-3 mt-1">
-                          <p className="text-[10px] text-cyan-500/70 font-semibold uppercase tracking-wider">
-                            Range: [{currentForecast.forecasts[0].error_range[0].toFixed(0)} - {currentForecast.forecasts[0].error_range[1].toFixed(0)}]
-                          </p>
-                          {currentForecast.forecasts[0].confidence_tier && (
-                            <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold uppercase ${
-                              currentForecast.forecasts[0].confidence_tier === 'High' ? 'bg-emerald-500/20 text-emerald-400' :
-                              currentForecast.forecasts[0].confidence_tier === 'Medium' ? 'bg-amber-500/20 text-amber-400' :
-                              'bg-rose-500/20 text-rose-400'
-                            }`}>
-                              {currentForecast.forecasts[0].confidence_tier} Confidence
-                            </span>
-                          )}
-                        </div>
-                      )}
+                      </div>
+                      <div className="bg-slate-900 p-2 rounded text-center">
+                        <p className="text-xs text-slate-500 mb-1">Grid Spillover</p>
+                        <p className="text-sm font-bold text-amber-400">{realisticImpact?.explanation?.spillover || 0.1}</p>
+                      </div>
                     </div>
                   </div>
                 </div>
