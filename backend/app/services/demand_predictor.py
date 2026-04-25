@@ -135,11 +135,20 @@ class DemandPredictor:
             # Calculate moving average baseline
             baseline = self._calculate_moving_average_baseline(zone_id, target_time)
 
+            if confidence > 0.8:
+                tier = "High"
+            elif confidence >= 0.6:
+                tier = "Medium"
+            else:
+                tier = "Low"
+
             forecasts.append({
                 'hour': h,
                 'predicted_demand': demand,
                 'confidence_lower': confidence_lower,
                 'confidence_upper': confidence_upper,
+                'error_range': [demand * 0.9, demand * 1.1],
+                'confidence_tier': tier,
                 'baseline_demand': baseline
             })
 
@@ -169,6 +178,7 @@ class DemandPredictor:
             f['confidence_lower'] = _to_native(f['confidence_lower'])
             f['confidence_upper'] = _to_native(f['confidence_upper'])
             f['baseline_demand'] = _to_native(f['baseline_demand'])
+            f['error_range'] = [_to_native(f['error_range'][0]), _to_native(f['error_range'][1])]
 
         return {
             'zone_id': int(zone_id),

@@ -40,6 +40,8 @@ export interface ForecastPoint {
   predicted_demand: number;
   confidence_lower: number;
   confidence_upper: number;
+  error_range?: [number, number];
+  confidence_tier?: "High" | "Medium" | "Low";
   baseline_demand: number;
 }
 
@@ -172,12 +174,34 @@ export interface BaselineCompare {
   peak_load: number;
   utilization: string;
   cost_efficiency: string;
+  improvement?: string;
 }
 
 export interface Baselines {
   no_optimization: BaselineCompare;
-  uniform_placement: BaselineCompare;
+  random_allocation?: BaselineCompare;
+  rule_based_night?: BaselineCompare;
+  uniform_placement?: BaselineCompare;
   ai_optimized: BaselineCompare;
+}
+
+export interface ModelMetrics {
+  mae: number;
+  rmse: number;
+  mape: number;
+  data_points: number;
+  validation_note: string;
+}
+
+export interface SensitivityPoint {
+  uncertainty: string;
+  adoption: string;
+  peak_reduction: number;
+}
+
+export interface RobustnessPoint {
+  missing_data: string;
+  accuracy: number;
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -286,6 +310,21 @@ export const dashboardAPI = {
 
   compareBaselines: (token: string): Promise<Baselines> =>
     request<Baselines>('/advanced/baselines/compare', {
+      headers: withAuth(token),
+    }),
+
+  getModelMetrics: (token: string): Promise<ModelMetrics> =>
+    request<ModelMetrics>('/advanced/model/metrics', {
+      headers: withAuth(token),
+    }),
+
+  getSensitivityAnalysis: (token: string): Promise<SensitivityPoint[]> =>
+    request<SensitivityPoint[]>('/advanced/analysis/sensitivity', {
+      headers: withAuth(token),
+    }),
+
+  getRobustnessAnalysis: (token: string): Promise<RobustnessPoint[]> =>
+    request<RobustnessPoint[]>('/advanced/analysis/robustness', {
       headers: withAuth(token),
     }),
 };
