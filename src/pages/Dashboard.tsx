@@ -36,6 +36,7 @@ import AssistantPanel from '../components/ui/AssistantPanel';
 const MAP_STYLE = 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json';
 
 const BENGALURU_CENTER = { lat: 12.97, lng: 77.59 };
+const BENGALURU_DEMO_NOTICE = 'You are outside Bengaluru or location is unavailable. Showing Bengaluru live demo data.';
 
 const INDIAN_CITIES = [
   { name: 'Bengaluru', lat: 12.97, lng: 77.59, state: 'Karnataka' },
@@ -54,7 +55,17 @@ const BENGALURU_ZONES = [
   { id: 3, name: 'Whitefield', lat: 12.9698, lng: 77.7499 },
   { id: 4, name: 'Electronic City', lat: 12.8399, lng: 77.6770 },
   { id: 5, name: 'Jayanagar', lat: 12.9299, lng: 77.5826 },
+  { id: 6, name: 'MG Road', lat: 12.9752, lng: 77.6060 },
+  { id: 7, name: 'Manyata Tech Park', lat: 13.0420, lng: 77.6200 },
+  { id: 8, name: 'Yelahanka', lat: 13.1007, lng: 77.5963 },
+  { id: 9, name: 'JP Nagar', lat: 12.9063, lng: 77.5857 },
+  { id: 10, name: 'Hebbal', lat: 13.0358, lng: 77.5970 },
+  { id: 11, name: 'Banashankari', lat: 12.9255, lng: 77.5468 },
+  { id: 12, name: 'Airport Corridor', lat: 13.1986, lng: 77.7066 },
 ];
+
+type Coordinate = { lat: number; lng: number };
+type StationLike = Coordinate & { name?: string };
 
 function haversineDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const R = 6371;
@@ -83,6 +94,20 @@ async function reverseGeocode(lat: number, lng: number): Promise<string> {
   } catch {
     return 'Unknown';
   }
+}
+
+function buildDirectionsUrl(station: StationLike, origin?: Coordinate | null): string {
+  const params = new URLSearchParams({
+    api: '1',
+    destination: `${station.lat},${station.lng}`,
+    travelmode: 'driving',
+  });
+
+  if (origin) {
+    params.set('origin', `${origin.lat},${origin.lng}`);
+  }
+
+  return `https://www.google.com/maps/dir/?${params.toString()}`;
 }
 
 function KPICard({ title, value, hint, trend, upIsGood = false }: any) {
@@ -120,6 +145,7 @@ export default function Dashboard() {
   const [userLocation, setUserLocation] = useState<{lat: number; lng: number} | null>(null);
   const [detectedCity, setDetectedCity] = useState<string>('Detecting...');
   const [isDemoMode, setIsDemoMode] = useState(true);
+  const [directionOrigin, setDirectionOrigin] = useState<Coordinate | null>(null);
   const [showLocationSelector, setShowLocationSelector] = useState(false);
   const [selectedStation, setSelectedStation] = useState<any>(null);
   const [notification, setNotification] = useState<{message: string; type: 'info' | 'success'} | null>(null);
@@ -129,17 +155,6 @@ export default function Dashboard() {
     latitude: BENGALURU_CENTER.lat,
     zoom: 11
   });
-
-  // Debug logging
-  useEffect(() => {
-    console.log('System State:', {
-      zonesCount: systemState.zones?.length || 0,
-      stationsCount: systemState.stations?.length || 0,
-      totalDemand: systemState.total_demand,
-      peakLoad: systemState.peak_load,
-      alerts: systemState.alerts?.length || 0
-    });
-  }, [systemState]);
 
   // Extract data from system state
   const zones = systemState.zones || [];
@@ -154,9 +169,10 @@ export default function Dashboard() {
   useEffect(() => {
     const detectLocation = async () => {
       if (!navigator.geolocation) {
-        setNotification({ message: 'Location unavailable. Showing Bengaluru Demo.', type: 'info' });
+        setNotification({ message: BENGALURU_DEMO_NOTICE, type: 'info' });
         setDetectedCity('Bengaluru');
         setUserLocation(BENGALURU_CENTER);
+        setDirectionOrigin(null);
         return;
       }
 
@@ -164,16 +180,18 @@ export default function Dashboard() {
         async (position) => {
           const lat = position.coords.latitude;
           const lng = position.coords.longitude;
-          setUserLocation({ lat, lng });
+          const detectedLocation = { lat, lng };
+          setDirectionOrigin(detectedLocation);
           
           try {
             const cityName = await reverseGeocode(lat, lng);
             const distToBengaluru = haversineDistance(lat, lng, BENGALURU_CENTER.lat, BENGALURU_CENTER.lng);
-            const isInBengaluru = cityName.toLowerCase().includes('bengaluru') || cityName.toLowerCase().includes('bangalore') || distToBengaluru < 100;
+            const isInBengaluru = cityName.toLowerCase().includes('bengaluru') || cityName.toLowerCase().includes('bangalore') || distToBengaluru < 45;
             
             if (isInBengaluru) {
               setDetectedCity('Bengaluru');
               setIsDemoMode(false);
+              setUserLocation(detectedLocation);
               setNotification({ message: `You're in ${cityName}. Showing local EV stations.`, type: 'success' });
             } else {
               let closestCity = INDIAN_CITIES[0];
@@ -184,13 +202,15 @@ export default function Dashboard() {
               }
               setDetectedCity(closestCity.name);
               setIsDemoMode(true);
-              setNotification({ message: `You're in ${cityName}. Showing Bengaluru EV Grid Demo.`, type: 'info' });
+              setUserLocation(BENGALURU_CENTER);
+              setNotification({ message: `${BENGALURU_DEMO_NOTICE} Detected location: ${cityName}.`, type: 'info' });
             }
             setTimeout(() => setNotification(null), 5000);
           } catch {
             setDetectedCity('Bengaluru');
             setIsDemoMode(true);
-            setNotification({ message: 'Location detected. Showing Bengaluru EV Grid Demo.', type: 'info' });
+            setUserLocation(BENGALURU_CENTER);
+            setNotification({ message: BENGALURU_DEMO_NOTICE, type: 'info' });
             setTimeout(() => setNotification(null), 5000);
           }
         },
@@ -198,7 +218,8 @@ export default function Dashboard() {
           setDetectedCity('Bengaluru');
           setIsDemoMode(true);
           setUserLocation(BENGALURU_CENTER);
-          setNotification({ message: 'Location unavailable. Showing Bengaluru Demo.', type: 'info' });
+          setDirectionOrigin(null);
+          setNotification({ message: BENGALURU_DEMO_NOTICE, type: 'info' });
           setTimeout(() => setNotification(null), 5000);
         }
       );
@@ -234,12 +255,6 @@ export default function Dashboard() {
     setViewState(prev => ({ ...prev, longitude: station.lng, latitude: station.lat, zoom: Math.max(prev.zoom, 13) }));
   };
 
-  const openDirections = (station: any) => {
-    const origin = userLocation ? `&origin=${userLocation.lat},${userLocation.lng}` : '';
-    const destination = `${station.lat},${station.lng}`;
-    window.open(`https://www.google.com/maps/dir/?api=1${origin}&destination=${destination}&travelmode=driving`, '_blank', 'noopener,noreferrer');
-  };
-
   // Sort stations by distance
   const sortedStations = [...stations].sort((a, b) => a.distance - b.distance);
   const bestOption = sortedStations.find(s => s.status === 'GREEN') || sortedStations[0];
@@ -267,20 +282,38 @@ export default function Dashboard() {
     .map((zone) => {
       const loadRatio = zone.current_demand / Math.max(zone.capacity, 1);
       const nearbyCount = stations.filter(station => haversineDistance(zone.lat, zone.lng, station.lat, station.lng) < 3).length;
-      const score = Math.min(98, Math.round(58 + loadRatio * 35 + Math.max(0, 3 - nearbyCount) * 6));
+      const nearbyStations = stations.filter(station => haversineDistance(zone.lat, zone.lng, station.lat, station.lng) < 4);
+      const avgQueue = nearbyStations.length
+        ? nearbyStations.reduce((sum, station) => sum + (station.wait_time || 0), 0) / nearbyStations.length
+        : 12;
+      const coverageGap = Math.max(0, 4 - nearbyCount);
+      const demandPressure = Math.min(35, loadRatio * 38);
+      const queuePressure = Math.min(18, avgQueue * 1.4);
+      const score = Math.min(98, Math.round(36 + demandPressure + coverageGap * 8 + queuePressure));
       const recommendedPorts = Math.max(4, Math.round(score / 12));
-      return { ...zone, score, nearbyCount, recommendedPorts };
+      const reasons = [
+        loadRatio > 0.65 ? 'high demand' : 'moderate demand',
+        coverageGap > 1 ? 'low station density' : 'adequate station coverage',
+        avgQueue > 8 ? 'queue pressure' : 'manageable queues',
+      ];
+      const action = score >= 82
+        ? 'Add fast ports and route flexible charging to late-night slots.'
+        : score >= 68
+          ? 'Increase charger utilization monitoring and prepare one expansion site.'
+          : 'Maintain coverage and promote off-peak charging.';
+      return { ...zone, score, nearbyCount, recommendedPorts, reason: reasons.join(' + '), action };
     })
     .sort((a, b) => b.score - a.score);
 
   // Current zone data
   const selectedZone = zones.find(z => z.id === selectedZoneId);
-  const selectedZoneData = BENGALURU_ZONES.find(z => z.id === selectedZoneId);
+  const selectedZoneData = selectedZone || BENGALURU_ZONES.find(z => z.id === selectedZoneId);
 
   const handleExploreBengaluru = () => {
     setDetectedCity('Bengaluru');
     setIsDemoMode(false);
     setUserLocation(BENGALURU_CENTER);
+    setDirectionOrigin(BENGALURU_CENTER);
     setShowLocationSelector(false);
     setNotification({ message: 'Exploring Bengaluru EV Grid.', type: 'success' });
     setTimeout(() => setNotification(null), 3000);
@@ -290,6 +323,7 @@ export default function Dashboard() {
     setDetectedCity(city.name);
     setIsDemoMode(true);
     setUserLocation({ lat: city.lat, lng: city.lng });
+    setDirectionOrigin({ lat: city.lat, lng: city.lng });
     setShowLocationSelector(false);
     setNotification({ message: `Exploring ${city.name} EV Grid (Demo).`, type: 'info' });
     setTimeout(() => setNotification(null), 3000);
@@ -418,7 +452,7 @@ export default function Dashboard() {
             <div className="absolute bottom-4 left-4 z-10">
               {userLocation && (
                 <button onClick={() => setViewState(prev => ({ ...prev, longitude: userLocation.lng, latitude: userLocation.lat, zoom: 14 }))} className="rounded-lg bg-[#0B0F14]/90 backdrop-blur-md border border-slate-700/50 p-2 shadow-lg flex items-center gap-2 text-xs text-slate-300 hover:text-white">
-                  <Crosshair size={14} /> My Location
+                  <Crosshair size={14} /> {isDemoMode ? 'Bengaluru View' : 'My Location'}
                 </button>
               )}
             </div>
@@ -495,9 +529,16 @@ export default function Dashboard() {
                         <p className="font-bold text-white">{selectedStation.wait_time > 0 ? `${selectedStation.wait_time} min` : 'None'}</p>
                       </div>
                     </div>
-                    <button onClick={() => openDirections(selectedStation)} className="w-full bg-cyan-500 hover:bg-cyan-400 text-[#0B0F14] font-semibold py-2 rounded-lg transition-colors flex items-center justify-center gap-2">
+                    <a
+                      href={buildDirectionsUrl(selectedStation, directionOrigin)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="w-full bg-cyan-500 hover:bg-cyan-400 text-[#0B0F14] font-semibold py-2 rounded-lg transition-colors flex items-center justify-center gap-2"
+                      aria-label={`Open Google Maps directions to ${selectedStation.name}`}
+                    >
                       <Navigation size={14} /> Get Directions
-                    </button>
+                    </a>
+                    <p className="mt-2 text-center text-[10px] text-slate-500">Directions open in Google Maps</p>
                   </div>
                 </div>
               )}
@@ -546,9 +587,17 @@ export default function Dashboard() {
                               <span className="text-xs text-slate-500">/{st.capacity}</span>
                             </div>
                           </div>
-                          <button onClick={(event) => { event.stopPropagation(); openDirections(st); }} className="mt-3 w-full rounded-lg border border-cyan-500/30 bg-cyan-500/10 py-2 text-xs font-semibold text-cyan-200 hover:bg-cyan-500/20 flex items-center justify-center gap-2">
+                          <a
+                            href={buildDirectionsUrl(st, directionOrigin)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={(event) => event.stopPropagation()}
+                            className="mt-3 w-full rounded-lg border border-cyan-500/30 bg-cyan-500/10 py-2 text-xs font-semibold text-cyan-200 hover:bg-cyan-500/20 flex items-center justify-center gap-2"
+                            aria-label={`Open Google Maps directions to ${st.name}`}
+                          >
                             <Navigation size={13} /> Directions
-                          </button>
+                          </a>
+                          <p className="mt-1 text-center text-[10px] text-slate-500">Directions open in Google Maps</p>
                         </div>
                       ))}
                     </div>
@@ -622,7 +671,9 @@ export default function Dashboard() {
                         <div className="bg-cyan-500/20 text-cyan-400 px-2 py-0.5 rounded text-[10px] font-bold">Score: {zone.score}</div>
                       </div>
                       <p className="text-xs text-slate-400 mt-2">Current demand: {zone.current_demand?.toFixed(0) || 0} kW • Capacity: {zone.capacity}</p>
+                      <p className="text-xs text-slate-400 mt-2">Reason: {zone.reason}</p>
                       <p className="text-xs text-emerald-300/80 mt-2">Plan: add {zone.recommendedPorts} fast ports near underserved feeders • {zone.nearbyCount} stations within 3 km</p>
+                      <p className="text-[11px] text-cyan-200/80 mt-2">{zone.action}</p>
                     </div>
                   ))}
                 </div>

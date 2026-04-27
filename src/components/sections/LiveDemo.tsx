@@ -1,6 +1,6 @@
 import { motion } from 'framer-motion'
 import { Link } from 'react-router-dom'
-import { Zap } from 'lucide-react'
+import { ArrowRight, Zap } from 'lucide-react'
 
 export default function LiveDemo() {
   return (
@@ -20,13 +20,14 @@ export default function LiveDemo() {
           </p>
         </div>
 
-        <motion.div
-          initial={{ opacity: 0, y: 40 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
-          transition={{ duration: 0.8 }}
-          className="relative mx-auto max-w-5xl rounded-[2rem] border border-slate-700 bg-slate-900 shadow-2xl overflow-hidden group"
-        >
+        <div className="mx-auto max-w-5xl">
+          <motion.div
+            initial={{ opacity: 0, y: 40 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.8 }}
+            className="relative rounded-[1.5rem] md:rounded-[2rem] border border-slate-700 bg-slate-900 shadow-2xl overflow-hidden group"
+          >
           {/* Top Bar Fake */}
           <div className="h-12 border-b border-slate-800 flex items-center px-6 justify-between bg-[#0B0F14]/50">
             <div className="flex items-center gap-2">
@@ -41,7 +42,7 @@ export default function LiveDemo() {
             </div>
           </div>
           
-          <div className="grid grid-cols-4 h-[500px]">
+          <div className="grid grid-cols-4 h-[360px] sm:h-[420px] md:h-[500px]">
             {/* Sidebar Fake */}
             <div className="col-span-1 border-r border-slate-800 p-6 space-y-6 hidden md:block">
               <div className="h-8 w-32 bg-slate-800 rounded mb-8 animate-pulse" />
@@ -56,7 +57,7 @@ export default function LiveDemo() {
             <div className="col-span-4 md:col-span-3 p-6 relative flex flex-col justify-between bg-[radial-gradient(circle_at_30%_30%,rgba(6,182,212,0.20),transparent_24%),radial-gradient(circle_at_70%_65%,rgba(16,185,129,0.18),transparent_22%),linear-gradient(135deg,#0f172a,#020617)] bg-cover bg-center">
               <div className="absolute inset-0 bg-slate-900/70" />
               
-              <div className="relative z-10 grid grid-cols-3 gap-4 mb-6">
+              <div className="relative z-10 grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
                 <div className="h-24 bg-slate-800/80 backdrop-blur rounded-xl border border-slate-700/50 p-4">
                   <div className="h-4 w-16 bg-slate-700 rounded mb-4" />
                   <div className="h-8 w-24 bg-emerald-500/20 rounded" />
@@ -76,7 +77,7 @@ export default function LiveDemo() {
           </div>
 
           {/* Overlay CTA */}
-          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm hidden md:flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity duration-300">
             <Link 
               to="/login?mode=login"
               className="bg-cyan-500 text-[#0B0F14] px-8 py-4 rounded-xl font-bold text-lg hover:bg-cyan-400 transition-transform hover:scale-105 shadow-[0_0_40px_rgba(6,182,212,0.4)] flex items-center gap-2"
@@ -84,7 +85,18 @@ export default function LiveDemo() {
               Launch Platform <Zap size={20} />
             </Link>
           </div>
-        </motion.div>
+          </motion.div>
+
+          <div className="mt-6 flex flex-col items-center gap-3 md:hidden">
+            <Link
+              to="/login?mode=login"
+              className="inline-flex min-h-12 w-full max-w-xs items-center justify-center gap-2 rounded-xl bg-cyan-500 px-6 py-3 text-base font-bold text-[#0B0F14] shadow-[0_0_30px_rgba(6,182,212,0.28)] transition-colors hover:bg-cyan-400 focus:outline-none focus:ring-2 focus:ring-cyan-300 focus:ring-offset-2 focus:ring-offset-[#0B0F14]"
+            >
+              Launch Platform <ArrowRight size={18} />
+            </Link>
+            <p className="text-center text-xs text-slate-500">Opens the live Bengaluru grid dashboard</p>
+          </div>
+        </div>
       </div>
     </section>
   )
