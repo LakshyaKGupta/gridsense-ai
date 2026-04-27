@@ -59,6 +59,12 @@ export default function Login() {
     setIsLoading(true);
 
     try {
+      if (email === 'demo@gridsense.ai' && password === 'demo1234') {
+        login('demo-token', 'demo@gridsense.ai');
+        navigate('/dashboard');
+        return;
+      }
+
       const credential = isSignup
         ? await firebaseRegister(email, password)
         : await firebaseLogin(email, password);
@@ -81,16 +87,7 @@ export default function Login() {
     setIsLoading(true);
 
     try {
-      // Try login first; if demo account doesn't exist yet, create it
-      let credential;
-      try {
-        credential = await firebaseLogin('demo@gridsense.ai', 'demo1234');
-      } catch {
-        credential = await firebaseRegister('demo@gridsense.ai', 'demo1234');
-      }
-
-      const idToken = await credential.user.getIdToken();
-      login(idToken, 'demo@gridsense.ai');
+      login('demo-token', 'demo@gridsense.ai');
       navigate('/dashboard');
     } catch (err: unknown) {
       const code = (err as { code?: string }).code ?? '';

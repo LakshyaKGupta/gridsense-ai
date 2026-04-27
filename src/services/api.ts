@@ -1,4 +1,23 @@
-const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8000';
+import {
+  getMockDemandPrediction,
+  getMockForecast,
+  getMockImpact,
+  getMockOptimization,
+  getMockRealisticImpact,
+  mockAlerts,
+  mockBaselines,
+  mockDashboardData,
+  mockFailureScenario,
+  mockModelMetrics,
+  mockNearbyStations,
+  mockRecommendations,
+  mockRobustness,
+  mockROI,
+  mockSensitivity,
+  mockSimulation,
+} from './mockData';
+
+const API_URL = import.meta.env.VITE_API_URL ?? '/api';
 
 type ApiEnvelope<T> = {
   success?: boolean;
@@ -216,24 +235,60 @@ export interface ReverseGeocodeResponse {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_URL}${path}`, init);
-  const raw = (await response.json().catch(() => null)) as ApiEnvelope<T> | null;
+  try {
+    const response = await fetch(`${API_URL}${path}`, {
+      ...init,
+      signal: init?.signal ?? AbortSignal.timeout(8000),
+    });
+    const raw = (await response.json().catch(() => null)) as ApiEnvelope<T> | null;
 
-  if (!response.ok) {
-    const message =
-      raw?.detail || raw?.message || `Request failed with status ${response.status}`;
-    throw new Error(message);
+    if (!response.ok) {
+      const message =
+        raw?.detail || raw?.message || `Request failed with status ${response.status}`;
+      throw new Error(message);
+    }
+
+    if (raw && typeof raw === 'object' && 'data' in raw) {
+      return raw.data as T;
+    }
+
+    return raw as T;
+  } catch (error) {
+    const fallback = getFallbackResponse<T>(path);
+    if (fallback !== undefined) return fallback;
+    throw error;
   }
-
-  if (raw && typeof raw === 'object' && 'data' in raw) {
-    return raw.data as T;
-  }
-
-  return raw as T;
 }
 
 function withAuth(token: string): HeadersInit {
   return { Authorization: `Bearer ${token}` };
+}
+
+function getFallbackResponse<T>(path: string): T | undefined {
+  const zoneMatch = path.match(/\/(?:demand|forecast|optimize|impact)\/(\d+)/);
+  const zoneId = zoneMatch ? Number(zoneMatch[1]) : 1;
+
+  if (path === '/dashboard/summary') return mockDashboardData as T;
+  if (path === '/alerts/' || path === '/alerts') return mockAlerts as T;
+  if (path === '/locations/roi/' || path === '/locations/roi') return mockROI as T;
+  if (path === '/locations/recommend') return mockRecommendations as T;
+  if (path === '/realtime/demand') return mockDashboardData.realtime_snapshot as T;
+  if (path.startsWith('/demand/')) return getMockDemandPrediction(zoneId) as T;
+  if (path.startsWith('/forecast/')) return getMockForecast(zoneId) as T;
+  if (path.startsWith('/optimize/')) return getMockOptimization(zoneId) as T;
+  if (path.startsWith('/impact/')) return getMockImpact(zoneId) as T;
+  if (path === '/simulate/run') return mockSimulation as T;
+  if (path.startsWith('/stations/nearby')) return mockNearbyStations as T;
+  if (path === '/advanced/data/status') return { is_real_data: false } as T;
+  if (path.startsWith('/advanced/impact/realistic')) return getMockRealisticImpact(zoneId) as T;
+  if (path === '/advanced/baselines/compare') return mockBaselines as T;
+  if (path === '/advanced/model/metrics') return mockModelMetrics as T;
+  if (path === '/advanced/analysis/sensitivity') return mockSensitivity as T;
+  if (path === '/advanced/analysis/robustness') return mockRobustness as T;
+  if (path === '/advanced/scenario/failure') return mockFailureScenario as T;
+  if (path.startsWith('/stations/reverse-geocode')) return { city: 'Bengaluru', valid: true } as T;
+
+  return undefined;
 }
 
 // Auth is handled by Firebase — see src/context/AuthContext.tsx

@@ -231,6 +231,13 @@ export default function Dashboard() {
   // Station click handler
   const handleStationClick = (station: any) => {
     setSelectedStation(station);
+    setViewState(prev => ({ ...prev, longitude: station.lng, latitude: station.lat, zoom: Math.max(prev.zoom, 13) }));
+  };
+
+  const openDirections = (station: any) => {
+    const origin = userLocation ? `&origin=${userLocation.lat},${userLocation.lng}` : '';
+    const destination = `${station.lat},${station.lng}`;
+    window.open(`https://www.google.com/maps/dir/?api=1${origin}&destination=${destination}&travelmode=driving`, '_blank', 'noopener,noreferrer');
   };
 
   // Sort stations by distance
@@ -238,20 +245,33 @@ export default function Dashboard() {
   const bestOption = sortedStations.find(s => s.status === 'GREEN') || sortedStations[0];
 
   // Generate prediction graph data from real zone demand
-  const predictionData = zones.length > 0 ? zones.map((zone, i) => {
+  const predictionHours = predictionTab === 'now' ? 12 : predictionTab === '24h' ? 24 : 72;
+  const selectedZoneForPrediction = zones.find(zone => zone.id === selectedZoneId) || zones[0];
+  const predictionData = selectedZoneForPrediction ? Array.from({ length: predictionHours }, (_, i) => {
     const now = new Date();
     const hour = (now.getHours() + i) % 24;
-    // Realistic curves based on zone demand
-    const baseDemand = zone.current_demand || 400;
-    const peakMultiplier = (hour >= 17 && hour <= 21) ? 1.3 : (hour >= 6 && hour <= 9) ? 1.1 : 0.8;
-    const demand = baseDemand * peakMultiplier + Math.sin(i * 0.5) * 50;
+    const baseDemand = selectedZoneForPrediction.current_demand || 400;
+    const eveningPeak = (hour >= 17 && hour <= 21) ? 1.32 : 1;
+    const morningPeak = (hour >= 7 && hour <= 9) ? 1.12 : 1;
+    const overnightRelief = (hour >= 0 && hour <= 5) ? 0.72 : 1;
+    const demand = baseDemand * eveningPeak * morningPeak * overnightRelief + Math.sin(i * 0.55) * 38;
     return {
       hour: i,
-      time: `${hour}:00`,
+      time: predictionTab === '3days' ? `D${Math.floor(i / 24) + 1} ${hour}:00` : `${hour}:00`,
       demand: Math.max(100, demand),
       confidence: Math.max(0.6, 0.92 - (i * 0.02))
     };
   }) : [];
+
+  const planningRecommendations = zones
+    .map((zone) => {
+      const loadRatio = zone.current_demand / Math.max(zone.capacity, 1);
+      const nearbyCount = stations.filter(station => haversineDistance(zone.lat, zone.lng, station.lat, station.lng) < 3).length;
+      const score = Math.min(98, Math.round(58 + loadRatio * 35 + Math.max(0, 3 - nearbyCount) * 6));
+      const recommendedPorts = Math.max(4, Math.round(score / 12));
+      return { ...zone, score, nearbyCount, recommendedPorts };
+    })
+    .sort((a, b) => b.score - a.score);
 
   // Current zone data
   const selectedZone = zones.find(z => z.id === selectedZoneId);
@@ -376,9 +396,9 @@ export default function Dashboard() {
           <KPICard title="Peak Reduction" value={`${reductionPercent.toFixed(0)}%`} hint="Efficiency gain" trend={12.4} upIsGood={true} />
         </div>
 
-        <div className="grid gap-6 lg:grid-cols-[1.8fr_1fr] h-[650px]">
+        <div className="grid gap-6 lg:grid-cols-[1.8fr_1fr] lg:h-[650px]">
           {/* Map */}
-          <div className="relative rounded-2xl border border-slate-800 bg-slate-900/50 overflow-hidden shadow-2xl flex flex-col">
+          <div className="relative min-h-[430px] rounded-2xl border border-slate-800 bg-slate-900/50 overflow-hidden shadow-2xl flex flex-col lg:min-h-0">
             <div className="absolute top-4 left-4 z-10 flex gap-2">
               <div className="rounded-lg bg-[#0B0F14]/90 backdrop-blur-md border border-cyan-500/30 p-2 shadow-lg flex items-center gap-2">
                 <Zap size={14} className="text-cyan-400" />
@@ -403,7 +423,7 @@ export default function Dashboard() {
               )}
             </div>
             
-<div className="flex-1 bg-black/50 w-full relative">
+            <div className="flex-1 bg-black/50 w-full min-h-[430px] relative lg:min-h-0">
               {mapError ? (
                 <div className="flex-1 flex items-center justify-center bg-slate-900/80">
                   <div className="text-center p-6">
@@ -413,7 +433,7 @@ export default function Dashboard() {
                   </div>
                 </div>
               ) : (
-                <Map ref={mapRef} {...viewState} onMove={evt => setViewState(evt.viewState)} mapStyle={MAP_STYLE} attributionControl={false} onError={() => setMapError(true)}>
+                <Map ref={mapRef} {...viewState} onMove={evt => setViewState(evt.viewState)} mapStyle={MAP_STYLE} attributionControl={false} onError={() => setMapError(true)} style={{ width: '100%', height: '100%' }}>
                   <NavigationControl position="bottom-right" />
 
                   {/* User Location */}
@@ -475,7 +495,7 @@ export default function Dashboard() {
                         <p className="font-bold text-white">{selectedStation.wait_time > 0 ? `${selectedStation.wait_time} min` : 'None'}</p>
                       </div>
                     </div>
-                    <button onClick={() => window.open(`https://www.google.com/maps/dir/?api=1&destination=${selectedStation.lat},${selectedStation.lng}`, '_blank')} className="w-full bg-cyan-500 hover:bg-cyan-400 text-[#0B0F14] font-semibold py-2 rounded-lg transition-colors flex items-center justify-center gap-2">
+                    <button onClick={() => openDirections(selectedStation)} className="w-full bg-cyan-500 hover:bg-cyan-400 text-[#0B0F14] font-semibold py-2 rounded-lg transition-colors flex items-center justify-center gap-2">
                       <Navigation size={14} /> Get Directions
                     </button>
                   </div>
@@ -485,7 +505,7 @@ export default function Dashboard() {
           </div>
 
           {/* Side Panel */}
-          <div className="rounded-2xl border border-slate-800 bg-slate-900/40 backdrop-blur-sm flex flex-col overflow-hidden">
+          <div className="min-h-[520px] rounded-2xl border border-slate-800 bg-slate-900/40 backdrop-blur-sm flex flex-col overflow-hidden lg:min-h-0">
             <div className="p-5 border-b border-slate-800">
               <h2 className="text-xl font-bold text-white">{selectedZoneData?.name} Zone</h2>
               <div className="mt-1 flex items-center gap-2 text-sm text-slate-400">
@@ -526,6 +546,9 @@ export default function Dashboard() {
                               <span className="text-xs text-slate-500">/{st.capacity}</span>
                             </div>
                           </div>
+                          <button onClick={(event) => { event.stopPropagation(); openDirections(st); }} className="mt-3 w-full rounded-lg border border-cyan-500/30 bg-cyan-500/10 py-2 text-xs font-semibold text-cyan-200 hover:bg-cyan-500/20 flex items-center justify-center gap-2">
+                            <Navigation size={13} /> Directions
+                          </button>
                         </div>
                       ))}
                     </div>
@@ -592,13 +615,14 @@ export default function Dashboard() {
                     <h4 className="text-sm font-semibold text-emerald-100 mb-1">Infrastructure Planning</h4>
                     <p className="text-[11px] text-emerald-200/70">AI-powered placement recommendations</p>
                   </div>
-                  {zones.map((zone) => (
-                    <div key={zone.id} className="rounded-xl border border-slate-700/50 bg-slate-800/30 p-4 cursor-pointer hover:bg-slate-800/80 transition">
+                  {planningRecommendations.map((zone) => (
+                    <div key={zone.id} onClick={() => setSelectedZoneId(zone.id)} className="rounded-xl border border-slate-700/50 bg-slate-800/30 p-4 cursor-pointer hover:bg-slate-800/80 transition">
                       <div className="flex justify-between items-start">
                         <h4 className="text-sm font-bold text-white">{zone.name}</h4>
-                        <div className="bg-cyan-500/20 text-cyan-400 px-2 py-0.5 rounded text-[10px] font-bold">Score: {Math.round(70 + Math.random() * 25)}</div>
+                        <div className="bg-cyan-500/20 text-cyan-400 px-2 py-0.5 rounded text-[10px] font-bold">Score: {zone.score}</div>
                       </div>
                       <p className="text-xs text-slate-400 mt-2">Current demand: {zone.current_demand?.toFixed(0) || 0} kW • Capacity: {zone.capacity}</p>
+                      <p className="text-xs text-emerald-300/80 mt-2">Plan: add {zone.recommendedPorts} fast ports near underserved feeders • {zone.nearbyCount} stations within 3 km</p>
                     </div>
                   ))}
                 </div>

@@ -1,5 +1,5 @@
-// Central State Engine - uses backend real EV stations API
-const API_URL = import.meta.env.VITE_API_URL ?? '';
+// Central State Engine - uses a real backend when configured and Vercel dummy API otherwise.
+const API_URL = import.meta.env.VITE_API_URL ?? '/api';
 
 export type Zone = {
   id: number;
@@ -95,15 +95,15 @@ export async function fetchSystemState(): Promise<SystemState> {
       signal: AbortSignal.timeout(10000)
     });
     
-    if (!response.ok) {
-      console.warn('EV State API unavailable, using fallback');
+    const contentType = response.headers.get('content-type') || '';
+    if (!response.ok || !contentType.includes('application/json')) {
       return fallbackState;
     }
     
-    const data = await response.json();
-    cachedState = data as SystemState;
+    const payload = await response.json();
+    cachedState = (payload?.data ?? payload) as SystemState;
     
-    console.log('System State:', {
+    console.debug('System State:', {
       zonesCount: cachedState.zones?.length || 0,
       stationsCount: cachedState.stations?.length || 0,
       dataSource: cachedState.data_source
@@ -111,7 +111,7 @@ export async function fetchSystemState(): Promise<SystemState> {
     
     return cachedState;
   } catch (error) {
-    console.warn('System state fetch failed:', error);
+    console.debug('System state fetch failed, using fallback:', error);
     return fallbackState;
   } finally {
     isFetching = false;

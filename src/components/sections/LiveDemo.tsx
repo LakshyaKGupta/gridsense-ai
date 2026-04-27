@@ -53,8 +53,8 @@ export default function LiveDemo() {
             </div>
             
             {/* Main Area Fake */}
-            <div className="col-span-4 md:col-span-3 p-6 relative flex flex-col justify-between bg-[url('https://api.maptiler.com/maps/dataviz-dark/256/0/0/0.png')] bg-cover bg-center">
-              <div className="absolute inset-0 bg-slate-900/80" />
+            <div className="col-span-4 md:col-span-3 p-6 relative flex flex-col justify-between bg-[radial-gradient(circle_at_30%_30%,rgba(6,182,212,0.20),transparent_24%),radial-gradient(circle_at_70%_65%,rgba(16,185,129,0.18),transparent_22%),linear-gradient(135deg,#0f172a,#020617)] bg-cover bg-center">
+              <div className="absolute inset-0 bg-slate-900/70" />
               
               <div className="relative z-10 grid grid-cols-3 gap-4 mb-6">
                 <div className="h-24 bg-slate-800/80 backdrop-blur rounded-xl border border-slate-700/50 p-4">

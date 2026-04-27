@@ -42,22 +42,40 @@ export default function Hero() {
     if (!vid) return
     vid.muted = true
     vid.playsInline = true
-    vid.loop = false
-    vid.preload = 'metadata'
-    vid.play().catch(() => {})
+    vid.defaultMuted = true
+    vid.loop = true
+    vid.preload = 'auto'
+    const startVideo = () => {
+      vid.play().catch(() => {
+        const retry = () => {
+          vid.play().catch(() => {})
+          document.removeEventListener('touchstart', retry)
+          document.removeEventListener('click', retry)
+        }
+        document.addEventListener('touchstart', retry, { once: true })
+        document.addEventListener('click', retry, { once: true })
+      })
+    }
+    startVideo()
 
     const onEnd = () => {
       setTimeout(() => {
         setVidOp(0)
         setTimeout(() => {
-          if (vidRef.current) { vidRef.current.currentTime = 0; vidRef.current.play() }
+          if (vidRef.current) { vidRef.current.currentTime = 0; vidRef.current.play().catch(() => {}) }
           setVidOp(1)
         }, 1000)
       }, 6000)
     }
 
+    vid.addEventListener('loadeddata', startVideo)
+    vid.addEventListener('canplay', startVideo)
     vid.addEventListener('ended', onEnd)
-    return () => vid.removeEventListener('ended', onEnd)
+    return () => {
+      vid.removeEventListener('loadeddata', startVideo)
+      vid.removeEventListener('canplay', startVideo)
+      vid.removeEventListener('ended', onEnd)
+    }
   }, [])
 
   // Hero visibility
@@ -74,8 +92,11 @@ export default function Hero() {
       <motion.video
         ref={vidRef}
         src="/hero.mp4"
-        muted playsInline
-        preload="metadata"
+        autoPlay
+        muted
+        playsInline
+        loop
+        preload="auto"
         style={{
           position:'absolute', inset:0,
           width:'100%', height:'100%',

@@ -28,6 +28,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
+    const storedToken = window.localStorage.getItem('gridsense_demo_token');
+    const storedEmail = window.localStorage.getItem('gridsense_demo_email');
+    if (storedToken && storedEmail) {
+      setToken(storedToken);
+      setEmail(storedEmail);
+    }
+
     if (!auth) {
       setIsLoading(false);
       return;
@@ -52,6 +59,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
 
   // Kept for backwards-compat with Login.tsx call signature
   const login = (newToken: string, newEmail: string) => {
+    window.localStorage.setItem('gridsense_demo_token', newToken);
+    window.localStorage.setItem('gridsense_demo_email', newEmail);
     setToken(newToken);
     setEmail(newEmail);
   };
@@ -63,6 +72,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     setToken(null);
     setEmail(null);
     setFirebaseUser(null);
+    window.localStorage.removeItem('gridsense_demo_token');
+    window.localStorage.removeItem('gridsense_demo_email');
   };
 
   return (
