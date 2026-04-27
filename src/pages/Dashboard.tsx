@@ -65,7 +65,8 @@ const BENGALURU_ZONES = [
 ];
 
 type Coordinate = { lat: number; lng: number };
-type StationLike = Coordinate & { name?: string };
+type MaybeCoordinate = { lat?: number | string | null; lng?: number | string | null };
+type StationLike = MaybeCoordinate & { name?: string };
 
 function haversineDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const R = 6371;
@@ -96,16 +97,49 @@ async function reverseGeocode(lat: number, lng: number): Promise<string> {
   }
 }
 
-function buildDirectionsUrl(station: StationLike, origin?: Coordinate | null): string {
+function toCoordinate(value: MaybeCoordinate | null | undefined): Coordinate | null {
+  if (!value) return null;
+
+  const lat = Number(value.lat);
+  const lng = Number(value.lng);
+
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return null;
+
+  return { lat, lng };
+}
+
+function formatCoordinate(coordinate: Coordinate): string {
+  return `${coordinate.lat.toFixed(6)},${coordinate.lng.toFixed(6)}`;
+}
+
+function buildMapSearchUrl(station: StationLike): string {
+  const query = station.name
+    ? `${station.name} EV charging station Bengaluru`
+    : 'EV charging station Bengaluru';
+
   const params = new URLSearchParams({
     api: '1',
-    destination: `${station.lat},${station.lng}`,
-    travelmode: 'driving',
+    query,
   });
 
-  if (origin) {
-    params.set('origin', `${origin.lat},${origin.lng}`);
+  return `https://www.google.com/maps/search/?${params.toString()}`;
+}
+
+function buildDirectionsUrl(station: StationLike, origin?: Coordinate | null): string {
+  const destination = toCoordinate(station);
+
+  if (!destination) {
+    return buildMapSearchUrl(station);
   }
+
+  const params = new URLSearchParams({
+    api: '1',
+    origin: origin ? formatCoordinate(origin) : 'Current Location',
+    destination: formatCoordinate(destination),
+    travelmode: 'driving',
+    dir_action: 'navigate',
+  });
 
   return `https://www.google.com/maps/dir/?${params.toString()}`;
 }
