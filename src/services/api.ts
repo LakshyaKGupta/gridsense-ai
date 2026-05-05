@@ -234,6 +234,179 @@ export interface ReverseGeocodeResponse {
   valid: boolean;
 }
 
+export interface ExplainabilityPayload {
+  reason: string;
+  impact: string;
+  confidence: string;
+}
+
+export interface OperatorForecastPoint {
+  hour: number;
+  label: string;
+  predicted_demand: number;
+  confidence_lower: number;
+  confidence_upper: number;
+  status: string;
+  timestamp: string;
+  explanation: ExplainabilityPayload;
+}
+
+export interface OperatorDashboardPayload {
+  role: 'operator';
+  scenario: string;
+  scenario_options: Array<{ id: string; label: string; active: boolean }>;
+  zone: { id: number; name: string; lat: number; lng: number; capacity: number; zone_type: string };
+  grid_stress: {
+    predicted_load: number;
+    capacity: number;
+    status: string;
+    delta_kw: number;
+    explanation: ExplainabilityPayload;
+  };
+  forecast: {
+    zone_id: number;
+    zone_name: string;
+    curve: OperatorForecastPoint[];
+    peak: { label: string; predicted_demand: number; confidence_upper: number };
+    model: string;
+  };
+  network_summary: {
+    zones_at_risk: number;
+    constrained_zones: number;
+    peak_window: string;
+    highest_headroom_zone: string;
+    scenario_delta_kw: number;
+  };
+  action_queue: Array<{
+    priority: string;
+    title: string;
+    reason: string;
+    impact: string;
+    confidence: string;
+  }>;
+  zone_rankings: Array<{
+    id: number;
+    name: string;
+    predicted_load: number;
+    capacity: number;
+    headroom_kw: number;
+    utilization_percent: number;
+    status: string;
+    type: string;
+    active: boolean;
+  }>;
+  planning_insights: Array<{
+    headline: string;
+    reason: string;
+    impact: string;
+    confidence: string;
+  }>;
+  all_zones: Array<{ id: number; name: string; lat: number; lng: number; capacity: number; type: string; active: boolean }>;
+}
+
+export interface RoutePayload {
+  provider: string;
+  distance_km: number;
+  duration_minutes: number;
+  geometry: {
+    type: string;
+    coordinates: number[][];
+  };
+}
+
+export interface UserDashboardPayload {
+  role: 'user';
+  zone: { id: number; name: string; lat: number; lng: number; capacity: number; zone_type: string; ev_count: number };
+  effective_location: {
+    lat: number;
+    lng: number;
+  };
+  profile_context: {
+    vehicle_model: string;
+    battery_capacity_kwh?: number | null;
+    home_charging_access?: boolean | null;
+    typical_charging_time?: string | null;
+  };
+  service_area_notice?: string | null;
+  nearest_station: {
+    id: number;
+    name: string;
+    lat: number;
+    lng: number;
+    operator?: string;
+    status: 'GREEN' | 'YELLOW' | 'RED';
+    load: number;
+    capacity: number;
+    distance: number;
+    wait_time: number;
+    zone_name: string;
+  } | null;
+  selected_station: {
+    id: number;
+    name: string;
+    lat: number;
+    lng: number;
+    operator?: string;
+    status: 'GREEN' | 'YELLOW' | 'RED';
+    load: number;
+    capacity: number;
+    distance: number;
+    wait_time: number;
+    zone_name: string;
+  } | null;
+  route: RoutePayload | null;
+  station_options: Array<{
+    id: number;
+    name: string;
+    lat: number;
+    lng: number;
+    operator?: string;
+    status: 'GREEN' | 'YELLOW' | 'RED';
+    load: number;
+    capacity: number;
+    distance: number;
+    wait_time: number;
+    zone_name: string;
+  }>;
+  alternatives: Array<{
+    id: number;
+    name: string;
+    operator: string;
+    status: 'GREEN' | 'YELLOW' | 'RED';
+    distance_km: number;
+    wait_time_minutes: number;
+    estimated_total_minutes: number;
+    score: number;
+    reason: string;
+    is_best: boolean;
+  }>;
+  decision_support: {
+    target_energy_kwh: number;
+    estimated_session_minutes: number;
+    public_cost_inr: number;
+    home_cost_inr?: number | null;
+    savings_vs_home_inr?: number | null;
+    queue_time_savings_minutes: number;
+    route_provider: string;
+    home_charge_recommended: boolean;
+  };
+  charging_recommendation: {
+    time_label: string;
+    predicted_demand: number;
+    headline: string;
+    reason: string;
+    impact: string;
+    confidence: string;
+  } | null;
+  load_context: {
+    prediction: number;
+    confidence_lower: number;
+    confidence_upper: number;
+    status: string;
+    explanation: ExplainabilityPayload;
+  };
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   try {
     const response = await fetch(`${API_URL}${path}`, {
@@ -398,4 +571,38 @@ export const dashboardAPI = {
     request<ReverseGeocodeResponse>(`/stations/reverse-geocode?lat=${lat}&lng=${lng}`, {
       headers: withAuth(token),
     }),
+
+  getOperatorDashboard: (token: string, zone?: string, scenario: string = 'normal'): Promise<OperatorDashboardPayload> => {
+    const params = new URLSearchParams({ scenario });
+    if (zone) params.set('zone', zone);
+    return request<OperatorDashboardPayload>(`/portal/operator?${params.toString()}`, {
+      headers: withAuth(token),
+    });
+  },
+
+  getUserDashboard: (
+    token: string,
+    params: {
+      lat: number;
+      lng: number;
+      selected_station_id?: number | null;
+      vehicle_model?: string;
+      battery_capacity_kwh?: number | null;
+      home_charging_access?: boolean | null;
+      typical_charging_time?: string | null;
+    }
+  ): Promise<UserDashboardPayload> => {
+    const query = new URLSearchParams({
+      lat: String(params.lat),
+      lng: String(params.lng),
+    });
+    if (params.selected_station_id != null) query.set('selected_station_id', String(params.selected_station_id));
+    if (params.vehicle_model) query.set('vehicle_model', params.vehicle_model);
+    if (params.battery_capacity_kwh != null) query.set('battery_capacity_kwh', String(params.battery_capacity_kwh));
+    if (params.home_charging_access != null) query.set('home_charging_access', String(params.home_charging_access));
+    if (params.typical_charging_time) query.set('typical_charging_time', params.typical_charging_time);
+    return request<UserDashboardPayload>(`/portal/user?${query.toString()}`, {
+      headers: withAuth(token),
+    });
+  },
 };

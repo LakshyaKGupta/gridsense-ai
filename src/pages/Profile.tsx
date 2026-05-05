@@ -3,7 +3,7 @@ import { Navigate, Link } from 'react-router-dom';
 import { User, MapPin, Zap, Activity, Clock } from 'lucide-react';
 
 export default function Profile() {
-  const { token, email } = useAuth();
+  const { token, email, profile, role } = useAuth();
 
   if (!token) {
     return <Navigate to="/login" />;
@@ -31,7 +31,7 @@ export default function Profile() {
                 <User size={32} className="text-white" />
               </div>
               <div>
-                <h2 className="text-xl font-semibold text-white">GridSense User</h2>
+                <h2 className="text-xl font-semibold text-white">{profile?.name || 'GridSense User'}</h2>
                 <p className="text-slate-400 text-sm">{email}</p>
               </div>
             </div>
@@ -93,7 +93,7 @@ export default function Profile() {
             </div>
             <div className="space-y-2">
               <Link
-                to="/dashboard"
+                to={role === 'operator' ? '/dashboard/operator' : '/dashboard/user'}
                 className="block w-full text-center bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-400 py-2 rounded-lg transition-colors"
               >
                 Go to Dashboard

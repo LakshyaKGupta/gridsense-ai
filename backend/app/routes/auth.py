@@ -1,10 +1,17 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
+from datetime import timedelta
+
 from app.database import get_db
 from app.models.user import User
-from app.schemas.user import UserCreate, UserLogin, Token
-from app.utils.auth import get_password_hash, verify_password, create_access_token
-from datetime import timedelta
+from app.schemas.user import SessionExchangeRequest, Token, UserCreate, UserLogin
+from app.utils.auth import (
+    create_access_token,
+    create_session_token,
+    get_password_hash,
+    verify_firebase_identity_token,
+    verify_password,
+)
 
 router = APIRouter()
 
@@ -44,5 +51,31 @@ async def login(user: UserLogin, db: Session = Depends(get_db)):
     access_token = create_access_token(
         data={"sub": user.email},
         expires_delta=timedelta(minutes=30)
+    )
+    return {"access_token": access_token, "token_type": "bearer"}
+
+
+@router.post("/session", response_model=Token)
+async def create_session(request: SessionExchangeRequest):
+    if request.is_demo:
+        expected_token = f"demo-{request.role}-token"
+        if request.upstream_token != expected_token:
+            raise HTTPException(status_code=401, detail="Invalid demo session token")
+    else:
+        await verify_firebase_identity_token(
+            request.upstream_token,
+            expected_uid=request.uid,
+            expected_email=request.email,
+        )
+
+    access_token = create_session_token(
+        {
+            "sub": request.email,
+            "uid": request.uid,
+            "role": request.role,
+            "name": request.name,
+            "is_demo": request.is_demo,
+            "auth_source": "demo" if request.is_demo else "firebase",
+        }
     )
     return {"access_token": access_token, "token_type": "bearer"}

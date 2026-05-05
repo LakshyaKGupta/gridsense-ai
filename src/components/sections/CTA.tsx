@@ -72,7 +72,7 @@ export default function CTA() {
             lineHeight: 1.7, marginBottom: 48, maxWidth: 600
           }}
         >
-          Deploy in under 2 hours. No hardware changes. Pure AI intelligence overlay.
+          Deploy the decision layer fast, connect live forecasts, and guide both operators and EV drivers from a single control surface.
         </motion.p>
 
         <motion.div
@@ -130,7 +130,7 @@ export default function CTA() {
           {[
             { num: '<500ms', label: 'Response Time' },
             { num: '24h', label: 'Forecast Horizon' },
-            { num: '0', label: 'Hardware Changes' },
+            { num: '2', label: 'User Journeys' },
           ].map((item, i) => (
             <motion.div
               key={i}

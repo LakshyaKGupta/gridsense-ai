@@ -14,7 +14,7 @@ export default function HowItWorks() {
   const rotateX = useTransform(scrollYProgress, [0, 0.2], [20, 0]);
 
   return (
-    <section ref={containerRef} id="how" className="py-32 bg-[#0B0F14] relative perspective-1000">
+    <section ref={containerRef} id="how" className="py-32 bg-[#0B0F14] relative perspective-1000" style={{ position: 'relative' }}>
       <div className="max-w-6xl mx-auto px-6 mb-20 text-center">
         <span className="text-xs font-bold uppercase tracking-[2px] text-cyan-500 mb-4 block">
           How It Works

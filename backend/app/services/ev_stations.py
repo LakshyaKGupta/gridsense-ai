@@ -1,25 +1,41 @@
 import math
-import random
 import httpx
-import asyncio
+import os
+import re
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
+from app.services.zone_catalog import nearest_zone
 
 class EVStationFetcher:
     """Fetches real EV charging stations from OpenStreetMap via Overpass API"""
     
     OVERPASS_URL = "https://overpass-api.de/api/interpreter"
     FALLBACK_STATIONS = [
-        {"id": 1, "name": "Tesla超级充电站 Indiranagar", "lat": 12.9784, "lng": 77.6408, "operator": "Tesla"},
-        {"id": 2, "name": "EV充电站 Koramangala", "lat": 12.9279, "lng": 77.6271, "operator": "ABL"},
+        {"id": 1, "name": "Tesla Charging Hub Indiranagar", "lat": 12.9784, "lng": 77.6408, "operator": "Tesla"},
+        {"id": 2, "name": "ABL Charging Hub Koramangala", "lat": 12.9279, "lng": 77.6271, "operator": "ABL"},
         {"id": 3, "name": "ChargePoint Whitefield", "lat": 12.9698, "lng": 77.7499, "operator": "ChargePoint"},
-        {"id": 4, "name": "EESL充电站 Electronic City", "lat": 12.8399, "lng": 77.6770, "operator": "EESL"},
-        {"id": 5, "name": "Ashok充电站 Jayanagar", "lat": 12.9299, "lng": 77.5826, "operator": "ABB"},
+        {"id": 4, "name": "EESL Charging Hub Electronic City", "lat": 12.8399, "lng": 77.6770, "operator": "EESL"},
+        {"id": 5, "name": "ABB Charging Hub Jayanagar", "lat": 12.9299, "lng": 77.5826, "operator": "ABB"},
     ]
     
     def __init__(self):
         self.cached_stations = None
         self.last_fetch = None
+
+    def _normalize_station_name(self, name: str, operator: str, station_id: int) -> str:
+        english_variant = name.strip()
+        if re.search(r"[^\x00-\x7F]", english_variant):
+            ascii_only = re.sub(r"[^\x00-\x7F]+", " ", english_variant)
+            ascii_only = re.sub(r"\s+", " ", ascii_only).strip()
+            if len(ascii_only) >= 6:
+                english_variant = ascii_only
+            else:
+                english_variant = f"{operator or 'EV'} Charging Hub {station_id}"
+
+        english_variant = re.sub(r"\s+", " ", english_variant).strip(" -")
+        if not english_variant:
+            english_variant = f"{operator or 'EV'} Charging Hub {station_id}"
+        return english_variant
     
     async def fetch_bengaluru_stations(self) -> List[Dict]:
         """Fetch EV stations in Bengaluru area using Overpass API"""
@@ -58,12 +74,12 @@ class EVStationFetcher:
                             
                             if lat and lon:
                                 tags = element.get("tags", {})
-                                name = tags.get("name") or tags.get("brand") or f"EV Station {element['id']}"
+                                name = tags.get("name:en") or tags.get("name") or tags.get("brand") or f"EV Station {element['id']}"
                                 operator = tags.get("operator") or "Unknown"
                                 
                                 stations.append({
                                     "id": element["id"],
-                                    "name": name,
+                                    "name": self._normalize_station_name(name, operator, element["id"]),
                                     "lat": lat,
                                     "lng": lon,
                                     "operator": operator,
@@ -100,16 +116,12 @@ class EVStationFetcher:
                     station["lat"], station["lng"]
                 )
             
-            # Derive load based on time and distance from center
-            base_load = 120 + (i * 30)  # Distribute load across stations
-            
-            # Add time-based variation
-            if is_peak:
-                load = min(base_load * 1.5, 280)
-            elif current_hour < 6 or current_hour > 22:
-                load = base_load * 0.4
-            else:
-                load = base_load + random.randint(-20, 20)
+            # Derive a stable, time-sensitive load profile from station order and hour.
+            base_load = 95 + (i * 17)
+            peak_factor = 1.32 if is_peak else 0.72 if current_hour < 6 or current_hour > 22 else 1.0
+            diurnal_adjustment = math.sin(((current_hour + i) / 24) * math.pi * 2) * 12
+            distance_pressure = max(0.0, 8.0 - min(distance, 8.0)) * 3.5
+            load = (base_load * peak_factor) + diurnal_adjustment + distance_pressure
             
             load = max(30, min(300, load))
             
@@ -121,11 +133,12 @@ class EVStationFetcher:
             
             result.append({
                 **station,
-                "load": load,
+                "load": round(load, 1),
                 "capacity": 300,
                 "status": status,
                 "distance": round(distance, 1),
-                "wait_time": round(max(0, (load / 50) - 3), 1) if load > 150 else 0
+                "wait_time": round(max(0, (load / 50) - 3), 1) if load > 150 else 0,
+                "zone_name": nearest_zone(station["lat"], station["lng"])["name"],
             })
         
         # Sort by distance
@@ -150,14 +163,54 @@ async def get_real_stations(user_location: Optional[Dict] = None) -> List[Dict]:
     return station_fetcher.get_stations_with_status(user_location)
 
 
-def calculate_route(user_lat: float, user_lng: float, station_lat: float, station_lng: float) -> Dict:
-    """Calculate route using Haversine (simplified) - in production use Mapbox API"""
+async def calculate_route(user_lat: float, user_lng: float, station_lat: float, station_lng: float) -> Dict:
+    """Calculate a road route using Mapbox when configured, with OSRM fallback."""
     distance = station_fetcher._haversine_distance(user_lat, user_lng, station_lat, station_lng)
-    
-    # Estimate duration (assuming 30 km/h in city)
+
+    mapbox_token = os.getenv("MAPBOX_ACCESS_TOKEN")
+    if mapbox_token:
+        mapbox_url = (
+            "https://api.mapbox.com/directions/v5/mapbox/driving/"
+            f"{user_lng},{user_lat};{station_lng},{station_lat}"
+            f"?geometries=geojson&overview=full&access_token={mapbox_token}"
+        )
+        try:
+            async with httpx.AsyncClient(timeout=20.0) as client:
+                response = await client.get(mapbox_url)
+                response.raise_for_status()
+                payload = response.json()
+                route = payload["routes"][0]
+                return {
+                    "provider": "mapbox",
+                    "distance_km": round(route["distance"] / 1000, 1),
+                    "duration_minutes": round(route["duration"] / 60),
+                    "geometry": route["geometry"],
+                }
+        except Exception:
+            pass
+
+    osrm_url = (
+        "https://router.project-osrm.org/route/v1/driving/"
+        f"{user_lng},{user_lat};{station_lng},{station_lat}?overview=full&geometries=geojson"
+    )
+    try:
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            response = await client.get(osrm_url)
+            response.raise_for_status()
+            payload = response.json()
+            route = payload["routes"][0]
+            return {
+                "provider": "osrm",
+                "distance_km": round(route["distance"] / 1000, 1),
+                "duration_minutes": round(route["duration"] / 60),
+                "geometry": route["geometry"],
+            }
+    except Exception:
+        pass
+
     duration_minutes = round(distance * 2)
-    
     return {
+        "provider": "haversine",
         "distance_km": round(distance, 1),
         "duration_minutes": duration_minutes,
         "geometry": {
@@ -188,10 +241,12 @@ def predict_demand(hours_ahead: int = 6) -> Dict:
             base = 150
         
         confidence = 0.92 - (h * 0.02)
+        variability = math.sin((hour / 24) * math.pi * 2) * 14
+        predicted_demand = max(80, base + variability)
         
         predictions.append({
             "hour": hour,
-            "predicted_demand": base + random.randint(-30, 30),
+            "predicted_demand": round(predicted_demand, 1),
             "confidence": max(0.5, confidence),
             "timestamp": (datetime.now() + timedelta(hours=h)).isoformat()
         })

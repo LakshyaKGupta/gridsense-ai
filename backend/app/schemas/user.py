@@ -1,5 +1,7 @@
+from typing import Literal, Optional
+
 from pydantic import BaseModel, EmailStr
-from typing import Optional
+
 from app.models.user import Role
 
 class UserCreate(BaseModel):
@@ -17,3 +19,12 @@ class Token(BaseModel):
 
 class TokenData(BaseModel):
     email: Optional[str] = None
+
+
+class SessionExchangeRequest(BaseModel):
+    upstream_token: str
+    uid: str
+    email: EmailStr
+    role: Literal["operator", "user"]
+    name: str
+    is_demo: bool = False

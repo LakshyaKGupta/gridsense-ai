@@ -4,7 +4,7 @@ import { Navigate } from 'react-router-dom';
 import { User, Lock, Bell, MapPin, Battery, Save, Shield } from 'lucide-react';
 
 export default function Settings() {
-  const { token, email, logout } = useAuth();
+  const { token, email, logout, profile } = useAuth();
   const [saved, setSaved] = useState(false);
 
   if (!token) {
@@ -42,7 +42,7 @@ export default function Settings() {
                 <label className="block text-sm text-slate-400 mb-1">Display Name</label>
                 <input
                   type="text"
-                  defaultValue="GridSense User"
+                  defaultValue={profile?.name || 'GridSense User'}
                   className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2 text-white focus:border-cyan-500 focus:outline-none"
                 />
               </div>
@@ -153,7 +153,7 @@ export default function Settings() {
               {saved ? 'Saved!' : 'Save Changes'}
             </button>
             <button
-              onClick={() => logout()}
+              onClick={() => { void logout(); }}
               className="flex items-center gap-2 bg-rose-500/20 hover:bg-rose-500/30 text-rose-400 font-semibold px-6 py-3 rounded-lg transition-colors"
             >
               <Shield size={18} />

@@ -1,6 +1,5 @@
 from typing import List, Dict, Any
 from datetime import datetime
-import random
 
 class ExplainabilityEngine:
     def generate_explanation(self, context: Dict[str, Any]) -> List[str]:
@@ -142,11 +141,4 @@ class ExplainabilityEngine:
 
     def _get_general_explanation(self) -> str:
         """Get a general explanation when specific context is unavailable"""
-        general_explanations = [
-            "Analysis based on current system data and patterns",
-            "Machine learning models applied to historical trends",
-            "Real-time monitoring and predictive analytics",
-            "Optimization algorithms balance efficiency and reliability",
-            "Data-driven recommendations for infrastructure planning"
-        ]
-        return random.choice(general_explanations)
+        return "Analysis based on current system data and patterns"

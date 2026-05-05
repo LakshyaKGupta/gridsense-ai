@@ -1,7 +1,7 @@
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from app.routes import auth, demand, optimize, locations, simulate, realtime, forecast, impact, alerts, roi, dashboard, stations, demo, advanced, system, ev_system
+from app.routes import auth, demand, optimize, locations, simulate, realtime, forecast, impact, alerts, roi, dashboard, stations, demo, advanced, system, ev_system, portal
 from app.database import engine, Base
 from app.services.explainability_engine import ExplainabilityEngine
 from app.services.simulation_engine import SimulationEngine
@@ -169,6 +169,7 @@ app.include_router(demo.router, prefix="/demo", tags=["Demo Scenarios"])
 app.include_router(advanced.router, prefix="/advanced", tags=["Advanced Analytics"])
 app.include_router(system.router, prefix="/system", tags=["Time-Series System"])
 app.include_router(ev_system.router, prefix="/ev", tags=["EV System"])
+app.include_router(portal.router, prefix="/portal", tags=["Role Portals"])
 
 @app.get("/")
 async def root():
