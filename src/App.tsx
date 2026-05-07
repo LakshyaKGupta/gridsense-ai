@@ -5,12 +5,12 @@ import { lazy, Suspense, type ReactNode } from 'react';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 
-const ProblemSolution = lazy(() => import('./components/sections/ProblemSolution'));
-const HowItWorks = lazy(() => import('./components/sections/HowItWorks'));
-const LiveDemo = lazy(() => import('./components/sections/LiveDemo'));
-const ImpactMetrics = lazy(() => import('./components/sections/ImpactMetrics'));
-const CTA = lazy(() => import('./components/sections/CTA'));
-const Features = lazy(() => import('./components/sections/Features'));
+import ProblemSolution from './components/sections/ProblemSolution';
+import HowItWorks from './components/sections/HowItWorks';
+import LiveDemo from './components/sections/LiveDemo';
+import ImpactMetrics from './components/sections/ImpactMetrics';
+import CTA from './components/sections/CTA';
+import Features from './components/sections/Features';
 const Login = lazy(() => import('./pages/Login'));
 const Settings = lazy(() => import('./pages/Settings'));
 const Profile = lazy(() => import('./pages/Profile'));
@@ -23,12 +23,12 @@ function Landing() {
     <>
       <Navbar />
       <Hero />
-      <Suspense fallback={<div />}><ProblemSolution /></Suspense>
-      <Suspense fallback={<div />}><Features /></Suspense>
-      <Suspense fallback={<div />}><HowItWorks /></Suspense>
-      <Suspense fallback={<div />}><LiveDemo /></Suspense>
-      <Suspense fallback={<div />}><ImpactMetrics /></Suspense>
-      <Suspense fallback={<div />}><CTA /></Suspense>
+      <ProblemSolution />
+      <Features />
+      <HowItWorks />
+      <LiveDemo />
+      <ImpactMetrics />
+      <CTA />
       <Footer />
     </>
   );
