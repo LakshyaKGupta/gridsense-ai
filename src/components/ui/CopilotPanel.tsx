@@ -14,6 +14,7 @@ export default function CopilotPanel({ token, zone, scenario = 'normal' }: Assis
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const debounceRef = useRef<number | null>(null);
 
   // Auto-scroll to bottom
   useEffect(() => {
@@ -29,25 +30,30 @@ export default function CopilotPanel({ token, zone, scenario = 'normal' }: Assis
     setLoading(true);
     setError(null);
 
-    try {
-      const response = await copilotAPI.ask(token, {
-        query: query.trim(),
-        zone_name: zone,
-        scenario,
-      });
-      setMessages((prev) => [...prev, { role: 'assistant', content: response }]);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to get response');
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: 'assistant',
-          content: "I'm unable to process your question right now. Please try again.",
-        },
-      ]);
-    } finally {
-      setLoading(false);
+    if (debounceRef.current) {
+      window.clearTimeout(debounceRef.current);
     }
+    debounceRef.current = window.setTimeout(async () => {
+      try {
+        const response = await copilotAPI.ask(token, {
+          query: query.trim(),
+          zone_name: zone,
+          scenario,
+        });
+        setMessages((prev) => [...prev, { role: 'assistant', content: response }]);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to get response');
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: 'assistant',
+            content: "I couldn't complete that request. Check operator session state or backend health.",
+          },
+        ]);
+      } finally {
+        setLoading(false);
+      }
+    }, 180);
   };
 
   const handleClearHistory = async () => {
@@ -145,6 +151,12 @@ export default function CopilotPanel({ token, zone, scenario = 'normal' }: Assis
                           >
                             {msg.content.confidence}
                           </span>
+                        </div>
+                      )}
+
+                      {msg.content.data_sources?.length > 0 && (
+                        <div className="pt-2 border-t border-white/8 text-xs text-slate-500">
+                          Sources: {msg.content.data_sources.join(', ')}
                         </div>
                       )}
 

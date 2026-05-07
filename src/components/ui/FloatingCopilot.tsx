@@ -9,7 +9,7 @@ interface Message {
 }
 
 export default function FloatingCopilot() {
-  const { token } = useAuth();
+  const { token, role } = useAuth();
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState<Message[]>([
@@ -32,7 +32,7 @@ export default function FloatingCopilot() {
     } catch {
       setMessages((prev) => [
         ...prev,
-        { role: 'assistant', text: 'Backend unavailable right now. Please ensure the server is running on port 8000.' },
+        { role: 'assistant', text: 'Copilot request failed. Check operator session or backend connectivity.' },
       ]);
     } finally {
       setLoading(false);
@@ -47,7 +47,7 @@ export default function FloatingCopilot() {
     }
   };
 
-  if (!token) return null;
+  if (!token || role !== 'operator') return null;
 
   return (
     <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end gap-3">

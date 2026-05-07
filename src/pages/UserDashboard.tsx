@@ -1,183 +1,246 @@
-import { useEffect, useState, useMemo } from 'react';
-import { Navigation, AlertCircle, Zap, ChevronRight, Battery, Settings, Activity, Map as MapIcon } from 'lucide-react';
-import { Link } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
-import { dashboardAPI, isBackendLive, UserDashboardPayload, Forecast } from '../services/api';
-import Map, { Marker, Popup, NavigationControl, Source, Layer } from 'react-map-gl/maplibre';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  AlertCircle,
+  BatteryCharging,
+  Bell,
+  Clock3,
+  Coins,
+  Download,
+  Expand,
+  Heart,
+  Home,
+  LogOut,
+  MapPin,
+  Navigation,
+  Route,
+  Wallet,
+  Zap,
+} from 'lucide-react';
+import Map, { Layer, Marker, NavigationControl, Popup, Source, type MapRef } from 'react-map-gl/maplibre';
 import 'maplibre-gl/dist/maplibre-gl.css';
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
+import { Link } from 'react-router-dom';
+import Papa from 'papaparse';
+import { Area, AreaChart, CartesianGrid, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import type { FeatureCollection, LineString } from 'geojson';
+import { useAuth } from '../context/AuthContext';
+import { dashboardAPI, Forecast, UserDashboardPayload } from '../services/api';
 
 const MAP_STYLE = 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json';
 const DEFAULT_LOCATION = { lat: 12.9716, lng: 77.5946 };
-const BENGALURU_BOUNDS = { latMin: 12.82, latMax: 13.15, lngMin: 77.45, lngMax: 77.80 };
 
-type UserWorkspace = 'charge' | 'route' | 'smart' | 'vehicle' | 'history' | 'saved' | 'insights' | 'notifications' | 'wallet' | 'settings';
+type Workspace = 'charge' | 'route' | 'smart' | 'history' | 'saved' | 'alerts' | 'wallet' | 'settings';
 
-const USER_WORKSPACES: { id: UserWorkspace; label: string }[] = [
+const WORKSPACES: Array<{ id: Workspace; label: string }> = [
   { id: 'charge', label: 'Charge Now' },
-  { id: 'route', label: 'Route' },
-  { id: 'smart', label: 'Smart' },
-  { id: 'vehicle', label: 'Vehicle' },
+  { id: 'route', label: 'Route Planner' },
+  { id: 'smart', label: 'Smart Charging' },
   { id: 'history', label: 'History' },
   { id: 'saved', label: 'Saved' },
-  { id: 'insights', label: 'Insights' },
-  { id: 'notifications', label: 'Alerts' },
+  { id: 'alerts', label: 'Alerts' },
   { id: 'wallet', label: 'Wallet' },
   { id: 'settings', label: 'Settings' },
 ];
 
-function isInBengaluru(lat: number, lng: number): boolean {
-  return lat >= BENGALURU_BOUNDS.latMin && lat <= BENGALURU_BOUNDS.latMax && lng >= BENGALURU_BOUNDS.lngMin && lng <= BENGALURU_BOUNDS.lngMax;
-}
-
-function statusColor(status: 'GREEN' | 'YELLOW' | 'RED') {
-  if (status === 'GREEN') return { bg: 'bg-emerald-400/10', text: 'text-emerald-300', border: 'border-emerald-400/20', dot: '#10b981', badge: 'Available' };
-  if (status === 'YELLOW') return { bg: 'bg-amber-400/10', text: 'text-amber-300', border: 'border-amber-400/20', dot: '#eab308', badge: 'Moderate wait' };
-  return { bg: 'bg-red-400/10', text: 'text-red-300', border: 'border-red-400/20', dot: '#ef4444', badge: 'Busy' };
-}
-
-function formatHour(hour: number): string {
-  const date = new Date();
-  date.setHours(hour, 0, 0, 0);
-  return date.toLocaleTimeString('en-US', { hour: 'numeric', hour12: true });
-}
+const MAP_WORKSPACES: Workspace[] = ['charge', 'route', 'smart'];
 
 function buildDirectionsUrl(lat: number, lng: number, origin?: { lat: number; lng: number }): string {
-  const dest = `${lat.toFixed(6)},${lng.toFixed(6)}`;
-  const params = new URLSearchParams({ api: '1', destination: dest, travelmode: 'driving', dir_action: 'navigate' });
+  const params = new URLSearchParams({
+    api: '1',
+    destination: `${lat.toFixed(6)},${lng.toFixed(6)}`,
+    travelmode: 'driving',
+    dir_action: 'navigate',
+  });
   if (origin) params.set('origin', `${origin.lat.toFixed(6)},${origin.lng.toFixed(6)}`);
   return `https://www.google.com/maps/dir/?${params.toString()}`;
 }
 
+function downloadCsv(filename: string, rows: Record<string, unknown>[]) {
+  const csv = Papa.unparse(rows);
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(link.href);
+}
+
+function statusTone(status: 'GREEN' | 'YELLOW' | 'RED') {
+  if (status === 'GREEN') return 'border-emerald-400/20 bg-emerald-400/10 text-emerald-200';
+  if (status === 'YELLOW') return 'border-amber-400/20 bg-amber-400/10 text-amber-200';
+  return 'border-rose-400/20 bg-rose-400/10 text-rose-200';
+}
+
 export default function UserDashboard() {
   const { token, logout, profile } = useAuth();
+  const [workspace, setWorkspace] = useState<Workspace>('charge');
   const [location, setLocation] = useState(DEFAULT_LOCATION);
+  const [selectedStationId, setSelectedStationId] = useState<number | null>(null);
+  const [batteryPercent, setBatteryPercent] = useState<number>(38);
+  const [destination, setDestination] = useState('Flexible charging stop');
   const [data, setData] = useState<UserDashboardPayload | null>(null);
   const [forecast, setForecast] = useState<Forecast | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [viewState, setViewState] = useState({ longitude: DEFAULT_LOCATION.lng, latitude: DEFAULT_LOCATION.lat, zoom: 12 });
-  const [selectedStation, setSelectedStation] = useState<UserDashboardPayload['station_options'][0] | null>(null);
-  const [isDemoMode, setIsDemoMode] = useState(false);
-  const [workspace, setWorkspace] = useState<UserWorkspace>('charge');
+  const [actionPending, setActionPending] = useState<string | null>(null);
+  const [selectedPopupId, setSelectedPopupId] = useState<number | null>(null);
+  const [viewState, setViewState] = useState({ longitude: DEFAULT_LOCATION.lng, latitude: DEFAULT_LOCATION.lat, zoom: 12.3 });
+  const [workspaceState, setWorkspaceState] = useState<UserDashboardPayload['workspace_state'] | null>(null);
+  const mapShellRef = useRef<HTMLDivElement>(null);
+  const mapRef = useRef<MapRef | null>(null);
 
-  // Get user location with Bengaluru demo mode detection
   useEffect(() => {
-    if (!navigator.geolocation) {
-      setIsDemoMode(true);
-      return;
-    }
+    if (!navigator.geolocation) return;
     navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        const loc = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-        if (isInBengaluru(loc.lat, loc.lng)) {
-          setLocation(loc);
-          setViewState((prev) => ({ ...prev, longitude: loc.lng, latitude: loc.lat, zoom: 13 }));
-        } else {
-          setIsDemoMode(true);
-        }
+      (position) => {
+        const nextLocation = { lat: position.coords.latitude, lng: position.coords.longitude };
+        setLocation(nextLocation);
+        setViewState((current) => ({
+          ...current,
+          latitude: nextLocation.lat,
+          longitude: nextLocation.lng,
+          zoom: 13.1,
+        }));
       },
-      () => setIsDemoMode(true),
-      { enableHighAccuracy: true, timeout: 6000 }
+      () => undefined,
+      { enableHighAccuracy: true, timeout: 6000 },
     );
   }, []);
 
-  // Fetch dashboard data
-  useEffect(() => {
+  const fetchDashboard = async (nextStationId: number | null = selectedStationId) => {
     if (!token) return;
     const userData = profile?.user_data;
-    setLoading(true);
+    if (!data) setLoading(true);
     setError(null);
-
-    dashboardAPI
-      .getUserDashboard(token, {
+    try {
+      const payload = await dashboardAPI.getUserDashboard(token, {
         lat: location.lat,
         lng: location.lng,
+        selected_station_id: nextStationId,
         vehicle_model: userData?.vehicleModel,
         battery_capacity_kwh: userData?.batteryCapacityKwh,
+        battery_percent: batteryPercent,
         home_charging_access: userData?.homeChargingAccess,
         typical_charging_time: userData?.typicalChargingTime,
-      })
-      .then((payload) => {
-        setData(payload);
-        setError(null);
-      })
-      .catch((err) => {
-        setError(err instanceof Error ? err.message : 'Failed to load dashboard');
-      })
-      .finally(() => {
-        setLoading(false);
+        destination,
       });
-  }, [token, location, profile]);
+      setData(payload);
+      setWorkspaceState(payload.workspace_state);
+      const resolvedStationId = nextStationId ?? payload.selected_station?.id ?? payload.nearest_station?.id ?? null;
+      setSelectedStationId(resolvedStationId);
+      if (payload.selected_station || payload.nearest_station) {
+        const focus = payload.selected_station || payload.nearest_station;
+        setViewState((current) => ({
+          ...current,
+          longitude: focus?.lng ?? current.longitude,
+          latitude: focus?.lat ?? current.latitude,
+          zoom: 13.3,
+        }));
+      }
+    } catch (fetchError) {
+      setError(fetchError instanceof Error ? fetchError.message : 'Failed to load EV dashboard');
+    } finally {
+      setLoading(false);
+    }
+  };
 
-  // Fetch forecast data
   useEffect(() => {
-    if (!token || !data?.zone) return;
-    dashboardAPI
-      .getForecast(token, data.zone.id)
-      .then((forecastData) => setForecast(forecastData))
-      .catch(() => undefined);
+    void fetchDashboard();
+  }, [token, location.lat, location.lng, profile]);
+
+  useEffect(() => {
+    if (!token || !data?.zone?.id) return;
+    dashboardAPI.getForecast(token, data.zone.id).then(setForecast).catch(() => undefined);
   }, [token, data?.zone?.id]);
 
-  const recommendedStation = data?.nearest_station;
-  const stationOptions = data?.station_options?.slice(0, 6) || [];
+  const selectedStation = useMemo(() => {
+    if (!data) return null;
+    return data.station_options.find((station) => station.id === selectedStationId) || data.selected_station || data.nearest_station;
+  }, [data, selectedStationId]);
+
+  useEffect(() => {
+    const resizeMap = () => {
+      window.requestAnimationFrame(() => mapRef.current?.resize());
+    };
+
+    resizeMap();
+    const timeoutId = window.setTimeout(resizeMap, 240);
+    window.addEventListener('resize', resizeMap);
+    document.addEventListener('fullscreenchange', resizeMap);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+      window.removeEventListener('resize', resizeMap);
+      document.removeEventListener('fullscreenchange', resizeMap);
+    };
+  }, [workspace, data?.selected_station?.id, data?.nearest_station?.id]);
+
+  const routeGeoJson = useMemo<FeatureCollection<LineString> | null>(() => {
+    if (!data?.route?.geometry?.coordinates?.length) return null;
+    return {
+      type: 'FeatureCollection',
+      features: [
+        {
+          type: 'Feature',
+          properties: {},
+          geometry: {
+            type: 'LineString',
+            coordinates: data.route.geometry.coordinates,
+          },
+        },
+      ],
+    };
+  }, [data?.route]);
+
   const routeOrigin = data?.effective_location || location;
-  const decision = data?.decision_support;
-  const recommendation = decision?.recommended_action;
-  const chargeNow = decision?.charge_now;
+  const shouldShowMap = MAP_WORKSPACES.includes(workspace);
 
-  const bestTimeWindow = useMemo(() => {
-    if (!forecast?.forecasts) return null;
-    const sorted = [...forecast.forecasts].sort((a, b) => a.predicted_demand - b.predicted_demand);
-    return sorted[0];
-  }, [forecast]);
+  const bestWindow = data?.charging_recommendation;
+  const chargeNow = data?.decision_support.charge_now;
+  const savedStations = workspaceState?.saved?.stations || [];
+  const savedRoutes = workspaceState?.saved?.routes || [];
+  const savedWindows = workspaceState?.saved?.windows || [];
+  const activeAlerts = (workspaceState?.alerts || []).filter((alert) => !alert.dismissed);
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-[#0B0F14] text-slate-100">
-        <header className="sticky top-0 z-40 border-b border-white/8 bg-[#0B0F14]/88 backdrop-blur-xl">
-          <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-4 sm:px-6">
-            <div className="flex items-center gap-3">
-              <div className="h-10 w-10 rounded-2xl bg-white/5 animate-pulse" />
-              <div>
-                <div className="h-3 w-20 bg-white/5 rounded animate-pulse" />
-                <div className="h-5 w-32 bg-white/5 rounded animate-pulse mt-2" />
-              </div>
-            </div>
-          </div>
-        </header>
-        <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6">
-          <div className="grid gap-6 lg:grid-cols-[1fr_380px]">
-            <div className="rounded-2xl border border-white/8 bg-white/[0.03]">
-              <div className="h-[600px] bg-slate-900 animate-pulse rounded-2xl" />
-            </div>
-            <div className="space-y-4">
-              <div className="rounded-2xl border border-white/8 bg-white/[0.03] p-5">
-                <div className="h-3 w-32 bg-white/5 rounded animate-pulse" />
-                <div className="h-6 w-48 bg-white/5 rounded animate-pulse mt-3" />
-                <div className="space-y-2 mt-4">
-                  {[1, 2, 3].map((i) => <div key={i} className="h-4 w-full bg-white/5 rounded animate-pulse" />)}
-                </div>
-              </div>
-              <div className="rounded-2xl border border-white/8 bg-white/[0.03] p-5">
-                <div className="h-3 w-24 bg-white/5 rounded animate-pulse" />
-                <div className="space-y-2 mt-4">
-                  {[1, 2, 3, 4].map((i) => <div key={i} className="h-10 bg-white/5 rounded animate-pulse" />)}
-                </div>
-              </div>
-            </div>
-          </div>
-        </main>
-      </div>
-    );
+  const performWorkspaceUpdate = async <T,>(label: string, task: () => Promise<T>, apply: (result: T) => void) => {
+    setActionPending(label);
+    try {
+      const result = await task();
+      apply(result);
+    } catch (taskError) {
+      setError(taskError instanceof Error ? taskError.message : 'Action failed');
+    } finally {
+      setActionPending(null);
+    }
+  };
+
+  const toggleFullscreen = async () => {
+    if (!mapShellRef.current) return;
+    if (document.fullscreenElement) {
+      await document.exitFullscreen();
+      window.requestAnimationFrame(() => mapRef.current?.resize());
+      return;
+    }
+    await mapShellRef.current.requestFullscreen();
+    window.requestAnimationFrame(() => mapRef.current?.resize());
+  };
+
+  if (loading && !data) {
+    return <div className="flex min-h-screen items-center justify-center bg-[#0B0F14] text-slate-100">Loading charging workspace...</div>;
   }
 
-  if (error || !data) {
+  if (!data) {
     return (
-      <div className="min-h-screen bg-[#0B0F14] flex items-center justify-center text-slate-100">
-        <div className="text-center max-w-sm">
-          <AlertCircle className="mx-auto mb-4 text-red-400" size={32} />
-          <p className="text-red-200">{error || 'Unable to load dashboard'}</p>
+      <div className="flex min-h-screen items-center justify-center bg-[#0B0F14] p-6 text-slate-100">
+        <div className="max-w-md rounded-3xl border border-white/10 bg-white/5 p-8 text-center">
+          <AlertCircle className="mx-auto mb-4 text-rose-300" size={28} />
+          <p className="text-lg font-semibold text-white">Dashboard unavailable</p>
+          <p className="mt-2 text-sm text-slate-400">{error || 'The EV workspace could not be loaded.'}</p>
+          <button
+            onClick={() => void fetchDashboard()}
+            className="mt-4 rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-slate-200"
+          >
+            Retry
+          </button>
         </div>
       </div>
     );
@@ -185,678 +248,896 @@ export default function UserDashboard() {
 
   return (
     <div className="min-h-screen bg-[#0B0F14] text-slate-100">
-      {/* Header */}
+      <div
+        className="pointer-events-none fixed inset-0 opacity-40"
+        style={{
+          backgroundImage:
+            'radial-gradient(circle at 12% 16%, rgba(56,189,248,0.14), transparent 28%), radial-gradient(circle at 82% 14%, rgba(16,185,129,0.12), transparent 22%), linear-gradient(180deg, rgba(148,163,184,0.05), transparent 58%)',
+        }}
+      />
+
       <header className="sticky top-0 z-40 border-b border-white/8 bg-[#0B0F14]/88 backdrop-blur-xl">
-        <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-3 sm:px-6">
+        <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-4 sm:px-6">
           <Link to="/" className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-slate-300">
-              <Zap size={16} />
+            <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-cyan-300/25 bg-cyan-300/10 text-cyan-200">
+              <BatteryCharging size={18} />
             </div>
             <div>
-              <p className="text-[10px] uppercase tracking-[0.24em] text-slate-500">GridSense</p>
-              <h1 className="text-sm font-semibold text-white">Charging Navigation</h1>
+              <p className="text-[11px] uppercase tracking-[0.26em] text-cyan-200/70">EV Owner</p>
+              <h1 className="text-lg font-semibold text-white">Charging Intelligence</h1>
             </div>
           </Link>
           <div className="flex items-center gap-2">
-            {isDemoMode && (
-              <span className="rounded-md bg-amber-400/10 px-2 py-1 text-[10px] font-medium text-amber-300 border border-amber-400/20">
-                Demo: Bengaluru
-              </span>
-            )}
-            {isBackendLive
-              ? <span className="rounded-full border border-emerald-400/30 bg-emerald-400/10 px-3 py-1 text-[10px] uppercase tracking-[0.22em] text-emerald-300">● Live</span>
-              : <span className="rounded-full border border-amber-400/30 bg-amber-400/10 px-3 py-1 text-[10px] uppercase tracking-[0.22em] text-amber-300">◎ Simulation</span>
-            }
-            <Link to="/" className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-slate-400 hover:text-white transition">
+            <Link to="/" className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-300">
+              <Home size={14} />
               Home
             </Link>
-            <button onClick={() => logout()} className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-slate-400 hover:text-white transition">
+            <button onClick={() => void logout()} className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-300">
+              <LogOut size={14} />
               Sign out
             </button>
           </div>
         </div>
       </header>
 
-      {/* User Workspace Tabs */}
-      <div className="w-full border-b border-white/8 bg-white/[0.02]">
-        <div className="mx-auto flex max-w-7xl gap-1 px-4 py-2 overflow-x-auto">
-          {USER_WORKSPACES.map((ws) => {
-            const isActive = workspace === ws.id;
-            return (
-              <button
-                key={ws.id}
-                onClick={() => setWorkspace(ws.id)}
-                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs whitespace-nowrap transition ${
-                  isActive
-                    ? 'bg-green-500/20 text-green-300 border border-green-500/30'
-                    : 'text-slate-400 hover:text-white hover:bg-white/5'
-                }`}
-              >
-                {ws.label}
-              </button>
-            );
-          })}
+      <div className="border-b border-white/8 bg-white/[0.02]">
+        <div className="mx-auto flex max-w-7xl gap-1 overflow-x-auto px-4 py-2 sm:px-6">
+          {WORKSPACES.map((item) => (
+            <button
+              key={item.id}
+              onClick={() => setWorkspace(item.id)}
+              className={`rounded-lg px-3 py-1.5 text-xs transition ${
+                workspace === item.id
+                  ? 'border border-cyan-400/30 bg-cyan-400/10 text-cyan-200'
+                  : 'text-slate-400 hover:bg-white/5 hover:text-white'
+              }`}
+            >
+              {item.label}
+            </button>
+          ))}
         </div>
       </div>
 
-      <main className="mx-auto max-w-7xl px-4 py-4 sm:px-6">
-        <div className="grid gap-4 lg:grid-cols-[1fr_380px]">
-          {/* ===== MAP & MAIN WORKSPACE ===== */}
-          <section className="rounded-2xl border border-white/8 bg-[#0B0F14] overflow-hidden flex flex-col h-[600px] shadow-2xl">
-            {workspace === 'charge' && (
-            <div className="relative w-full h-full bg-slate-900">
+      <main className="relative z-10 mx-auto max-w-7xl px-4 py-4 sm:px-6">
+        <div className="grid items-start gap-4 xl:grid-cols-[1.25fr_0.75fr]">
+          <section ref={mapShellRef} className="overflow-hidden rounded-[28px] border border-white/10 bg-white/5 backdrop-blur-xl">
+            <div className="flex flex-wrap items-start justify-between gap-4 border-b border-white/8 px-5 py-4">
+              <div>
+                <p className="text-[11px] uppercase tracking-[0.26em] text-slate-400">
+                  {shouldShowMap ? 'Live Charging Map' : `${WORKSPACES.find((item) => item.id === workspace)?.label} Workspace`}
+                </p>
+                <h2 className="mt-2 text-2xl font-semibold text-white">
+                  {shouldShowMap
+                    ? selectedStation ? selectedStation.name : 'Best station nearby'
+                    : workspace === 'history' ? 'Charging activity and exports'
+                    : workspace === 'saved' ? 'Saved stations, routes, and windows'
+                    : workspace === 'alerts' ? 'Queue, price, and grid alerts'
+                    : workspace === 'wallet' ? 'Wallet balance and transactions'
+                    : 'Charging preferences'}
+                </h2>
+                <p className="mt-2 text-sm text-slate-400">
+                  {shouldShowMap && data.route
+                    ? `${data.route.distance_km.toFixed(1)} km route, ${data.route.duration_minutes} min drive, ${Math.round(selectedStation?.wait_time || 0)} min queue`
+                    : shouldShowMap
+                      ? 'Select a station to load route guidance'
+                      : 'This tab uses focused controls instead of repeating the map.'}
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button onClick={() => void fetchDashboard()} className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-300">
+                  Refresh
+                </button>
+                {shouldShowMap && (
+                  <button onClick={() => void toggleFullscreen()} className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-300">
+                    <Expand size={14} />
+                    Fullscreen
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {shouldShowMap ? (
+            <div className="relative h-[560px] lg:h-[620px]">
               <Map
+                ref={mapRef}
                 {...viewState}
-                onMove={(evt) => setViewState(evt.viewState)}
+                onMove={(event) => setViewState(event.viewState)}
                 mapStyle={MAP_STYLE}
                 attributionControl={false}
                 style={{ width: '100%', height: '100%' }}
               >
                 <NavigationControl position="bottom-right" />
-
-                {/* User location */}
                 <Marker longitude={routeOrigin.lng} latitude={routeOrigin.lat} anchor="center">
-                  <div className="relative">
-                    <div className="absolute inset-0 h-4 w-4 rounded-full bg-blue-400 animate-ping opacity-20" />
-                    <div className="h-3 w-3 rounded-full bg-blue-400 border-2 border-white" />
-                  </div>
+                  <div className="h-4 w-4 rounded-full border-2 border-white bg-cyan-300 shadow-[0_0_18px_rgba(56,189,248,0.45)]" />
                 </Marker>
 
-                {/* Stations */}
-                {stationOptions.map((station) => {
-                  const isRecommended = station.id === recommendedStation?.id;
-                  const color = statusColor(station.status);
-                  return (
-                    <Marker key={station.id} longitude={station.lng} latitude={station.lat} anchor="center">
-                      <div
-                        className={`cursor-pointer transition-transform hover:scale-110 ${isRecommended ? 'h-7 w-7' : 'h-5 w-5'} rounded-full border-2 border-white shadow-lg`}
-                        style={{ backgroundColor: color.dot }}
-                        onClick={() => {
-                          setSelectedStation(station);
-                          setViewState((prev) => ({ ...prev, longitude: station.lng, latitude: station.lat, zoom: 14 }));
-                        }}
-                      />
-                    </Marker>
-                  );
-                })}
+                {data.station_options.map((station) => (
+                  <Marker key={station.id} longitude={station.lng} latitude={station.lat} anchor="center">
+                    <button
+                      onClick={() => {
+                        setSelectedStationId(station.id);
+                        setSelectedPopupId(station.id);
+                        void fetchDashboard(station.id);
+                      }}
+                      className="h-5 w-5 rounded-full border-2 border-white shadow-lg transition hover:scale-110"
+                      style={{ backgroundColor: station.status === 'GREEN' ? '#34d399' : station.status === 'YELLOW' ? '#f59e0b' : '#fb7185' }}
+                      aria-label={`Select ${station.name}`}
+                    />
+                  </Marker>
+                ))}
 
-                {/* Station popup */}
-                {selectedStation && (
+                {routeGeoJson && (
+                  <Source id="route-line" type="geojson" data={routeGeoJson}>
+                    <Layer
+                      id="route-line-stroke"
+                      type="line"
+                      paint={{
+                        'line-color': '#38bdf8',
+                        'line-width': 4,
+                        'line-opacity': 0.85,
+                      }}
+                    />
+                  </Source>
+                )}
+
+                {selectedPopupId && selectedStation && (
                   <Popup
                     longitude={selectedStation.lng}
                     latitude={selectedStation.lat}
-                    anchor="bottom"
-                    onClose={() => setSelectedStation(null)}
+                    anchor="top"
                     closeButton={true}
                     closeOnClick={false}
-                    offset={15}
-                    className="[&_.maplibregl-popup-content]:bg-[#0B0F14] [&_.maplibregl-popup-content]:border [&_.maplibregl-popup-content]:border-white/10 [&_.maplibregl-popup-content]:rounded-xl [&_.maplibregl-popup-content]:p-0 [&_.maplibregl-popup-close-button]:text-white"
+                    onClose={() => setSelectedPopupId(null)}
+                    offset={18}
+                    className="[&_.maplibregl-popup-content]:rounded-2xl [&_.maplibregl-popup-content]:border [&_.maplibregl-popup-content]:border-white/10 [&_.maplibregl-popup-content]:bg-[#081019] [&_.maplibregl-popup-content]:px-0 [&_.maplibregl-popup-content]:py-0"
                   >
-                    <div className="min-w-[220px]">
-                      <div className="p-3 border-b border-white/8">
-                        <h4 className="font-medium text-white text-sm">{selectedStation.name}</h4>
-                        <p className="text-xs text-slate-500 mt-0.5">{selectedStation.distance.toFixed(1)} km · {Math.round(selectedStation.wait_time)} min wait</p>
+                    <div className="min-w-[260px]">
+                      <div className="border-b border-white/8 px-4 py-3">
+                        <p className="font-medium text-white">{selectedStation.name}</p>
+                        <p className="mt-1 text-xs text-slate-400">
+                          {selectedStation.distance.toFixed(1)} km • {Math.round(selectedStation.wait_time)} min queue
+                        </p>
                       </div>
-                      <div className="p-3 grid grid-cols-3 gap-2 text-xs">
+                      <div className="grid grid-cols-3 gap-0 divide-x divide-white/8 px-4 py-3 text-center text-xs">
                         <div>
                           <p className="text-slate-500">Load</p>
-                          <p className="text-white font-medium">{Math.round(selectedStation.load)} kW</p>
+                          <p className="mt-1 font-semibold text-white">{Math.round(selectedStation.load)} kW</p>
                         </div>
                         <div>
                           <p className="text-slate-500">Capacity</p>
-                          <p className="text-white font-medium">{Math.round(selectedStation.capacity)} kW</p>
+                          <p className="mt-1 font-semibold text-white">{Math.round(selectedStation.capacity)} kW</p>
                         </div>
                         <div>
                           <p className="text-slate-500">Status</p>
-                          <p className={`text-white font-medium ${statusColor(selectedStation.status).text}`}>{selectedStation.status}</p>
+                          <p className="mt-1 font-semibold text-white">{selectedStation.status}</p>
                         </div>
                       </div>
                     </div>
                   </Popup>
                 )}
               </Map>
-            </div>
-            )}
-            
-            {workspace === 'route' && (
-            <div className="relative w-full h-full bg-slate-900">
-              <Map
-                {...viewState}
-                onMove={(evt) => setViewState(evt.viewState)}
-                mapStyle={MAP_STYLE}
-                attributionControl={false}
-                style={{ width: '100%', height: '100%' }}
-              >
-                <NavigationControl position="bottom-right" />
-                <Marker longitude={routeOrigin.lng} latitude={routeOrigin.lat} anchor="center">
-                  <div className="h-4 w-4 rounded-full bg-blue-500 border-2 border-white shadow-lg" />
-                </Marker>
-                {/* Mock destination marker */}
-                <Marker longitude={77.62} latitude={12.93} anchor="center">
-                  <div className="h-4 w-4 rounded-full bg-emerald-500 border-2 border-white shadow-lg" />
-                </Marker>
-                <Source id="route" type="geojson" data={{
-                  type: 'Feature',
-                  properties: {},
-                  geometry: {
-                    type: 'LineString',
-                    coordinates: [[routeOrigin.lng, routeOrigin.lat], [77.595, 12.95], [77.61, 12.94], [77.62, 12.93]]
-                  }
-                }}>
-                  <Layer id="route-line" type="line" paint={{ 'line-color': '#3b82f6', 'line-width': 4, 'line-opacity': 0.8 }} />
-                </Source>
-              </Map>
-              <div className="absolute top-4 left-4 bg-black/80 backdrop-blur-md p-4 rounded-xl border border-white/10 w-72">
-                <h3 className="text-white font-medium mb-3 flex items-center gap-2"><MapIcon size={16} className="text-blue-400"/> Active Route</h3>
-                <div className="space-y-3 text-sm">
-                  <div className="flex justify-between text-slate-300"><span>Destination:</span> <span className="text-white">Koramangala</span></div>
-                  <div className="flex justify-between text-slate-300"><span>Distance:</span> <span className="text-white">8.5 km</span></div>
-                  <div className="flex justify-between text-slate-300"><span>Est. Arrival:</span> <span className="text-white">24 min</span></div>
+
+              {data.service_area_notice && (
+                <div className="absolute left-4 top-4 rounded-2xl border border-cyan-400/20 bg-cyan-400/10 px-4 py-3 text-sm text-cyan-100 backdrop-blur-md">
+                  {data.service_area_notice}
                 </div>
-              </div>
-            </div>
-            )}
+              )}
 
-            {workspace === 'smart' && (
-            <div className="relative w-full h-full bg-[#0B0F14] p-6 flex flex-col">
-              <div className="flex items-center gap-3 mb-6">
-                <div className="p-2 bg-emerald-500/10 rounded-lg"><Zap size={20} className="text-emerald-400"/></div>
-                <div>
-                  <h3 className="text-white font-medium text-lg">Smart Charging Optimization</h3>
-                  <p className="text-slate-400 text-sm">Automated scheduling based on GridSense load forecasts</p>
+              {selectedStation && (
+                <div className="absolute bottom-4 left-4 right-4 grid gap-3 lg:grid-cols-[1fr_auto]">
+                  <div className="rounded-2xl border border-white/10 bg-[#071018]/90 px-4 py-3 backdrop-blur-md">
+                    <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Current Recommendation</p>
+                    <p className="mt-2 text-base font-semibold text-white">{selectedStation.name}</p>
+                    <p className="mt-1 text-sm text-slate-400">
+                      {data.route ? `${data.route.provider.toUpperCase()} route • ${data.route.duration_minutes} min drive` : 'Route unavailable'}
+                    </p>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() =>
+                        void performWorkspaceUpdate(
+                          'save-station',
+                          () => dashboardAPI.saveUserStation(token!, selectedStation.id),
+                          setWorkspaceState,
+                        )
+                      }
+                      className="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-200"
+                    >
+                      <Heart size={14} />
+                      Save
+                    </button>
+                    <a
+                      href={buildDirectionsUrl(selectedStation.lat, selectedStation.lng, routeOrigin)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={() =>
+                        void performWorkspaceUpdate(
+                          'record-navigation',
+                          () =>
+                            dashboardAPI.recordUserNavigation(token!, {
+                              station_id: selectedStation.id,
+                              station_name: selectedStation.name,
+                              distance_km: data.route?.distance_km || selectedStation.distance,
+                              eta_minutes: data.route?.duration_minutes || Math.round(selectedStation.distance * 4),
+                            }),
+                          setWorkspaceState,
+                        )
+                      }
+                      className="inline-flex items-center gap-2 rounded-2xl bg-cyan-300 px-4 py-3 text-sm font-semibold text-[#081019]"
+                    >
+                      <Navigation size={14} />
+                      Start navigation
+                    </a>
+                  </div>
                 </div>
-              </div>
-              <div className="flex-1 bg-white/[0.02] border border-white/5 rounded-xl p-4">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={[
-                    { label: '00:00', predicted_demand: 40 }, { label: '04:00', predicted_demand: 38 },
-                    { label: '08:00', predicted_demand: 65 }, { label: '12:00', predicted_demand: 62 },
-                    { label: '16:00', predicted_demand: 68 }, { label: '20:00', predicted_demand: 92 },
-                    { label: '24:00', predicted_demand: 50 }
-                  ]}>
-                      <defs>
-                        <linearGradient id="colorDemand" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#10b981" stopOpacity={0.3}/>
-                          <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
-                        </linearGradient>
-                      </defs>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#ffffff10" vertical={false} />
-                      <XAxis dataKey="label" stroke="#ffffff40" tick={{ fill: '#ffffff80', fontSize: 12 }} />
-                      <YAxis stroke="#ffffff40" tick={{ fill: '#ffffff80', fontSize: 12 }} />
-                      <RechartsTooltip 
-                        contentStyle={{ backgroundColor: '#0f172a', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px' }}
-                        itemStyle={{ color: '#fff' }}
-                      />
-                      <Area type="monotone" dataKey="predicted_demand" stroke="#10b981" strokeWidth={2} fillOpacity={1} fill="url(#colorDemand)" />
-                      {/* Highlight optimal window 23:00 to 05:00 */}
-                      <ReferenceLine x="23:00" stroke="#3b82f6" strokeDasharray="3 3" label={{ position: 'top', value: 'Optimal Start', fill: '#3b82f6', fontSize: 10 }} />
-                  </AreaChart>
-                </ResponsiveContainer>
-              </div>
+              )}
             </div>
-            )}
+            ) : (
+              <div className="grid min-h-[560px] content-start gap-4 p-5">
+                {workspace === 'history' && (
+                  <>
+                    <div className="grid gap-3 sm:grid-cols-3">
+                      <div className="rounded-2xl border border-white/8 bg-[#0D131A] p-4">
+                        <p className="text-xs text-slate-500">History entries</p>
+                        <p className="mt-2 text-2xl font-semibold text-white">{workspaceState?.history?.length || 0}</p>
+                      </div>
+                      <div className="rounded-2xl border border-white/8 bg-[#0D131A] p-4">
+                        <p className="text-xs text-slate-500">Saved routes</p>
+                        <p className="mt-2 text-2xl font-semibold text-white">{savedRoutes.length}</p>
+                      </div>
+                      <div className="rounded-2xl border border-white/8 bg-[#0D131A] p-4">
+                        <p className="text-xs text-slate-500">Saved windows</p>
+                        <p className="mt-2 text-2xl font-semibold text-white">{savedWindows.length}</p>
+                      </div>
+                    </div>
+                    <div className="rounded-2xl border border-white/8 bg-[#0D131A] p-5">
+                      <p className="text-sm font-medium text-white">Recent activity</p>
+                      <div className="mt-4 space-y-3">
+                        {(workspaceState?.history || []).slice(0, 5).map((entry: Record<string, any>) => (
+                          <div key={entry.id} className="flex items-center justify-between gap-3 rounded-xl border border-white/8 bg-white/[0.03] px-4 py-3">
+                            <div>
+                              <p className="text-sm font-medium text-white">{entry.station_name || entry.type}</p>
+                              <p className="mt-1 text-xs text-slate-500">{entry.created_at ? new Date(entry.created_at).toLocaleString() : 'Saved activity'}</p>
+                            </div>
+                            <span className="text-xs text-slate-400">{entry.time_label || `${entry.distance_km ?? 0} km`}</span>
+                          </div>
+                        ))}
+                        {(workspaceState?.history || []).length === 0 && <p className="text-sm text-slate-500">No charging activity recorded yet.</p>}
+                      </div>
+                    </div>
+                  </>
+                )}
 
-            {workspace === 'vehicle' && (
-            <div className="relative w-full h-full bg-[#0B0F14] p-8 flex flex-col items-center justify-center">
-               <div className="w-full max-w-lg space-y-6">
-                 <div className="text-center mb-8">
-                   <h2 className="text-3xl font-bold text-white">{profile?.user_data?.vehicleModel || 'Tata Nexon EV'}</h2>
-                   <p className="text-emerald-400 mt-2 font-medium">Connected & Online</p>
-                 </div>
-                 <div className="grid grid-cols-2 gap-4">
-                   <div className="bg-white/[0.03] border border-white/10 p-5 rounded-2xl flex items-center gap-4">
-                     <div className="p-3 bg-blue-500/10 rounded-full"><Battery size={24} className="text-blue-400"/></div>
-                     <div><p className="text-slate-400 text-sm">Battery Level</p><p className="text-2xl font-semibold text-white">42%</p></div>
-                   </div>
-                   <div className="bg-white/[0.03] border border-white/10 p-5 rounded-2xl flex items-center gap-4">
-                     <div className="p-3 bg-emerald-500/10 rounded-full"><MapIcon size={24} className="text-emerald-400"/></div>
-                     <div><p className="text-slate-400 text-sm">Est. Range</p><p className="text-2xl font-semibold text-white">128 km</p></div>
-                   </div>
-                   <div className="bg-white/[0.03] border border-white/10 p-5 rounded-2xl flex items-center gap-4">
-                     <div className="p-3 bg-purple-500/10 rounded-full"><Activity size={24} className="text-purple-400"/></div>
-                     <div><p className="text-slate-400 text-sm">Battery Health</p><p className="text-2xl font-semibold text-white">98%</p></div>
-                   </div>
-                   <div className="bg-white/[0.03] border border-white/10 p-5 rounded-2xl flex items-center gap-4">
-                     <div className="p-3 bg-orange-500/10 rounded-full"><Settings size={24} className="text-orange-400"/></div>
-                     <div><p className="text-slate-400 text-sm">Odometer</p><p className="text-2xl font-semibold text-white">12,450 km</p></div>
-                   </div>
-                 </div>
-               </div>
-            </div>
-            )}
+                {workspace === 'saved' && (
+                  <div className="grid gap-4 md:grid-cols-3">
+                    {[
+                      { label: 'Stations', value: savedStations.length, detail: savedStations[0]?.name || 'No station saved yet', icon: MapPin },
+                      { label: 'Routes', value: savedRoutes.length, detail: savedRoutes[0]?.station_name || 'No route saved yet', icon: Route },
+                      { label: 'Windows', value: savedWindows.length, detail: savedWindows[0]?.time_label || 'No charging window saved yet', icon: Clock3 },
+                    ].map((item) => (
+                      <div key={item.label} className="rounded-2xl border border-white/8 bg-[#0D131A] p-5">
+                        <item.icon size={18} className="text-cyan-300" />
+                        <p className="mt-4 text-xs uppercase tracking-[0.18em] text-slate-500">{item.label}</p>
+                        <p className="mt-2 text-3xl font-semibold text-white">{item.value}</p>
+                        <p className="mt-3 text-sm leading-6 text-slate-400">{item.detail}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
 
-            {workspace === 'insights' && (
-            <div className="relative w-full h-full bg-[#0B0F14] p-8 flex flex-col">
-              <h3 className="text-white font-medium text-lg mb-6">Charging Analytics</h3>
-              <div className="grid grid-cols-2 gap-4 mb-6">
-                <div className="bg-emerald-500/10 border border-emerald-500/20 p-5 rounded-2xl">
-                  <p className="text-emerald-400 text-sm font-medium">Smart Savings This Month</p>
-                  <p className="text-3xl font-bold text-white mt-2">₹1,240</p>
-                </div>
-                <div className="bg-blue-500/10 border border-blue-500/20 p-5 rounded-2xl">
-                  <p className="text-blue-400 text-sm font-medium">Total Energy Added</p>
-                  <p className="text-3xl font-bold text-white mt-2">142 kWh</p>
-                </div>
+                {workspace === 'alerts' && (
+                  <div className="grid gap-4">
+                    <div className="rounded-2xl border border-amber-400/20 bg-amber-400/10 p-5">
+                      <div className="flex items-center gap-3">
+                        <Bell size={18} className="text-amber-200" />
+                        <p className="text-lg font-semibold text-white">{activeAlerts.length} active alerts</p>
+                      </div>
+                      <p className="mt-2 text-sm text-amber-100/80">Unread and dismissed states are managed from the controls on the right.</p>
+                    </div>
+                    <div className="grid gap-3">
+                      {activeAlerts.slice(0, 4).map((alert) => (
+                        <div key={alert.id} className="rounded-2xl border border-white/8 bg-[#0D131A] p-4">
+                          <p className="font-medium text-white">{alert.title}</p>
+                          <p className="mt-1 text-sm text-slate-400">{alert.message}</p>
+                        </div>
+                      ))}
+                      {activeAlerts.length === 0 && <p className="rounded-2xl border border-white/8 bg-[#0D131A] p-4 text-sm text-slate-500">No active alerts.</p>}
+                    </div>
+                  </div>
+                )}
+
+                {workspace === 'wallet' && (
+                  <div className="grid gap-4 md:grid-cols-[1fr_1.2fr]">
+                    <div className="rounded-2xl border border-emerald-400/20 bg-emerald-400/10 p-5">
+                      <Wallet size={20} className="text-emerald-200" />
+                      <p className="mt-5 text-sm text-emerald-100/75">Available balance</p>
+                      <p className="mt-2 text-4xl font-semibold text-white">₹{workspaceState?.wallet?.balance_inr?.toFixed(0) || '0'}</p>
+                      <p className="mt-3 text-sm text-emerald-100/75">Monthly savings: ₹{workspaceState?.wallet?.monthly_savings_inr?.toFixed(0) || '0'}</p>
+                    </div>
+                    <div className="rounded-2xl border border-white/8 bg-[#0D131A] p-5">
+                      <p className="text-sm font-medium text-white">Recent transactions</p>
+                      <div className="mt-4 space-y-3">
+                        {(workspaceState?.wallet?.transactions || []).slice(0, 5).map((transaction: Record<string, any>) => (
+                          <div key={transaction.id} className="flex items-center justify-between rounded-xl border border-white/8 bg-white/[0.03] px-4 py-3 text-sm">
+                            <span className="text-slate-200">{transaction.type}</span>
+                            <span className="font-semibold text-white">₹{transaction.amount_inr}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {workspace === 'settings' && (
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="rounded-2xl border border-white/8 bg-[#0D131A] p-5">
+                      <p className="text-sm font-medium text-white">Notification controls</p>
+                      <p className="mt-2 text-sm leading-6 text-slate-400">Tune alert delivery, queue notices, and privacy mode from the settings panel.</p>
+                    </div>
+                    <div className="rounded-2xl border border-white/8 bg-[#0D131A] p-5">
+                      <p className="text-sm font-medium text-white">Preferred charging speed</p>
+                      <p className="mt-2 text-2xl font-semibold text-cyan-200">{workspaceState?.settings?.preferred_speed || 'fast'}</p>
+                    </div>
+                  </div>
+                )}
               </div>
-              <div className="flex-1 bg-white/[0.03] border border-white/10 rounded-2xl p-6 flex items-center justify-center text-slate-500 text-sm">
-                Detailed session history graph will appear here after your next charge.
-              </div>
-            </div>
             )}
-
-            {(workspace === 'history' || workspace === 'saved' || workspace === 'notifications' || workspace === 'wallet' || workspace === 'settings') && (
-            <div className="relative w-full h-full bg-[#0B0F14] flex items-center justify-center">
-              <div className="text-center bg-white/5 p-8 rounded-2xl border border-white/5">
-                <AlertCircle size={32} className="mx-auto mb-3 text-slate-400 opacity-50" />
-                <p className="text-slate-300 font-medium">{workspace.charAt(0).toUpperCase() + workspace.slice(1)}</p>
-                <p className="text-slate-500 text-xs mt-2 max-w-[200px] mx-auto">This module is currently disabled in the live demo environment.</p>
-              </div>
-            </div>
-            )}
-
-
           </section>
 
-          {/* ===== RIGHT PANEL ===== */}
-          <div className="space-y-4">
-            {workspace === 'charge' && chargeNow?.best_station_right_now && (
-              <section className="rounded-2xl border border-white/8 bg-white/[0.03] p-4">
-                <p className="text-[10px] uppercase tracking-[0.2em] text-slate-500 font-medium">Best Station Right Now</p>
-                <h3 className="mt-2 text-base font-semibold text-white">{chargeNow.best_station_right_now.station_name}</h3>
-                <p className="mt-1.5 text-sm text-slate-400 leading-relaxed">{chargeNow.best_station_right_now.why}</p>
-                <div className="mt-3 grid grid-cols-3 gap-2">
-                  <div className="rounded-lg bg-white/5 p-2.5">
-                    <p className="text-[10px] text-slate-500">Distance</p>
-                    <p className="mt-0.5 text-sm font-semibold text-white">{chargeNow.best_station_right_now.distance_km.toFixed(1)} km</p>
+          <aside className="space-y-4 xl:sticky xl:top-28">
+            {workspace === 'charge' && (
+              <>
+                <section className="rounded-[28px] border border-white/10 bg-white/5 p-5 backdrop-blur-xl">
+                  <p className="text-[11px] uppercase tracking-[0.26em] text-slate-400">Charge Now Engine</p>
+                  <div className="mt-4 grid gap-3">
+                    {[
+                      chargeNow?.best_station_right_now && {
+                        label: 'Best right now',
+                        value: chargeNow.best_station_right_now.station_name,
+                        detail: chargeNow.best_station_right_now.why,
+                      },
+                      chargeNow?.cheapest_option && {
+                        label: 'Cheapest',
+                        value:
+                          chargeNow.cheapest_option.type === 'home'
+                            ? 'Charge at home'
+                            : chargeNow.cheapest_option.station_name,
+                        detail: chargeNow.cheapest_option.why,
+                      },
+                      chargeNow?.fastest_option && {
+                        label: 'Fastest',
+                        value: `${chargeNow.fastest_option.station_name} • ${chargeNow.fastest_option.estimated_total_minutes} min`,
+                        detail: chargeNow.fastest_option.why,
+                      },
+                      chargeNow?.lowest_congestion_option && {
+                        label: 'Least congested',
+                        value: chargeNow.lowest_congestion_option.station_name,
+                        detail: chargeNow.lowest_congestion_option.why,
+                      },
+                    ]
+                      .filter(Boolean)
+                      .map((item) => (
+                        <div key={item!.label} className="rounded-2xl border border-white/8 bg-[#0D131A] p-4">
+                          <p className="text-xs uppercase tracking-[0.18em] text-slate-500">{item!.label}</p>
+                          <p className="mt-2 font-semibold text-white">{item!.value}</p>
+                          <p className="mt-2 text-sm leading-6 text-slate-400">{item!.detail}</p>
+                        </div>
+                      ))}
                   </div>
-                  <div className="rounded-lg bg-white/5 p-2.5">
-                    <p className="text-[10px] text-slate-500">Queue</p>
-                    <p className="mt-0.5 text-sm font-semibold text-white">{chargeNow.best_station_right_now.wait_time_minutes} min</p>
-                  </div>
-                  <div className="rounded-lg bg-white/5 p-2.5">
-                    <p className="text-[10px] text-slate-500">Utilization</p>
-                    <p className="mt-0.5 text-sm font-semibold text-white">{chargeNow.best_station_right_now.utilization_percent}%</p>
-                  </div>
-                </div>
-                <a
-                  href={buildDirectionsUrl(chargeNow.best_station_right_now.station_lat, chargeNow.best_station_right_now.station_lng, routeOrigin)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-400 py-2 text-sm font-semibold text-[#0B0F14] hover:bg-emerald-300 transition"
-                >
-                  <Navigation size={14} />
-                  Navigate Now
-                </a>
-              </section>
-            )}
+                </section>
 
-            {workspace === 'charge' && chargeNow && (
-              <section className="rounded-2xl border border-white/8 bg-white/[0.03] p-4">
-                <p className="text-[10px] uppercase tracking-[0.2em] text-slate-500 font-medium">Charge Now Options</p>
-                <div className="mt-3 grid gap-3">
-                  <div className="rounded-xl border border-white/8 bg-white/5 p-3">
-                    <div className="flex items-center justify-between gap-3">
-                      <p className="text-sm font-semibold text-white">Wait time saved</p>
-                      <p className="text-sm font-semibold text-emerald-300">{chargeNow.wait_time_saved.minutes} min</p>
-                    </div>
-                    <p className="mt-1 text-xs text-slate-400">{chargeNow.wait_time_saved.why}</p>
-                  </div>
-
-                  {chargeNow.cheapest_option && (
-                    <div className="rounded-xl border border-white/8 bg-white/5 p-3">
-                      <div className="flex items-center justify-between gap-3">
-                        <p className="text-sm font-semibold text-white">Cheapest option</p>
-                        <p className="text-sm font-semibold text-slate-200">₹{Math.round(chargeNow.cheapest_option.estimated_cost_inr)}</p>
-                      </div>
-                      <p className="mt-1 text-xs text-slate-400">
-                        {chargeNow.cheapest_option.type === 'home'
-                          ? chargeNow.cheapest_option.why
-                          : `${chargeNow.cheapest_option.station_name} • ${chargeNow.cheapest_option.why}`}
-                      </p>
-                      {chargeNow.cheapest_option.type === 'station' && (
-                        <a
-                          href={buildDirectionsUrl(chargeNow.cheapest_option.station_lat, chargeNow.cheapest_option.station_lng, routeOrigin)}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="mt-2 inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs text-slate-300 hover:bg-white/10 hover:text-white transition"
-                        >
-                          <Navigation size={12} />
-                          Navigate
-                        </a>
-                      )}
-                    </div>
-                  )}
-
-                  {chargeNow.fastest_option && (
-                    <div className="rounded-xl border border-white/8 bg-white/5 p-3">
-                      <div className="flex items-center justify-between gap-3">
-                        <p className="text-sm font-semibold text-white">Fastest option</p>
-                        <p className="text-sm font-semibold text-cyan-200">{chargeNow.fastest_option.estimated_total_minutes} min</p>
-                      </div>
-                      <p className="mt-1 text-xs text-slate-400">{chargeNow.fastest_option.station_name} • {chargeNow.fastest_option.why}</p>
-                      <a
-                        href={buildDirectionsUrl(chargeNow.fastest_option.station_lat, chargeNow.fastest_option.station_lng, routeOrigin)}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="mt-2 inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs text-slate-300 hover:bg-white/10 hover:text-white transition"
-                      >
-                        <Navigation size={12} />
-                        Navigate
-                      </a>
-                    </div>
-                  )}
-
-                  {chargeNow.lowest_congestion_option && (
-                    <div className="rounded-xl border border-white/8 bg-white/5 p-3">
-                      <div className="flex items-center justify-between gap-3">
-                        <p className="text-sm font-semibold text-white">Lowest congestion</p>
-                        <p className="text-sm font-semibold text-amber-200">{chargeNow.lowest_congestion_option.utilization_percent}%</p>
-                      </div>
-                      <p className="mt-1 text-xs text-slate-400">{chargeNow.lowest_congestion_option.station_name} • {chargeNow.lowest_congestion_option.why}</p>
-                      <a
-                        href={buildDirectionsUrl(chargeNow.lowest_congestion_option.station_lat, chargeNow.lowest_congestion_option.station_lng, routeOrigin)}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="mt-2 inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs text-slate-300 hover:bg-white/10 hover:text-white transition"
-                      >
-                        <Navigation size={12} />
-                        Navigate
-                      </a>
-                    </div>
-                  )}
-                </div>
-              </section>
-            )}
-
-            {/* Existing Decision Engine (kept for now for other tabs / fallback) */}
-            {workspace !== 'charge' && recommendation && (
-              <section className="rounded-2xl border border-white/8 bg-white/[0.03] p-4">
-                <p className="text-[10px] uppercase tracking-[0.2em] text-slate-500 font-medium">Recommended Action</p>
-                <h3 className="mt-2 text-base font-semibold text-white">{recommendation.headline}</h3>
-                <p className="mt-1.5 text-sm text-slate-400 leading-relaxed">{recommendation.why}</p>
-                {recommendation.benefits.length > 0 && (
-                  <ul className="mt-3 space-y-1.5">
-                    {recommendation.benefits.map((benefit, i) => (
-                      <li key={i} className="flex items-start gap-2 text-sm text-slate-300">
-                        <span className="mt-1 h-1.5 w-1.5 rounded-full bg-emerald-400 flex-shrink-0" />
-                        {benefit}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-                <div className="mt-3 pt-3 border-t border-white/8 flex items-center justify-between">
-                  <span className="text-[10px] text-slate-500">Confidence</span>
-                  <span className="text-xs font-medium text-slate-300">{recommendation.confidence}</span>
-                </div>
-                {recommendedStation && recommendation.type !== 'home_charge' && (
-                  <a
-                    href={buildDirectionsUrl(recommendedStation.lat, recommendedStation.lng, routeOrigin)}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-400 py-2 text-sm font-semibold text-[#0B0F14] hover:bg-emerald-300 transition"
-                  >
-                    <Navigation size={14} />
-                    Navigate Now
-                  </a>
-                )}
-              </section>
-            )}
-
-            {/* SESSION ESTIMATE */}
-            {workspace === 'charge' && decision && (
-              <section className="rounded-2xl border border-white/8 bg-white/[0.03] p-4">
-                <p className="text-[10px] uppercase tracking-[0.2em] text-slate-500 font-medium">Session Estimate</p>
-                <div className="mt-3 grid grid-cols-2 gap-3">
-                  <div className="rounded-lg bg-white/5 p-2.5">
-                    <p className="text-[10px] text-slate-500">Total Time</p>
-                    <p className="mt-0.5 text-sm font-semibold text-white">{decision.estimated_session_minutes} min</p>
-                  </div>
-                  <div className="rounded-lg bg-white/5 p-2.5">
-                    <p className="text-[10px] text-slate-500">Cost</p>
-                    <p className="mt-0.5 text-sm font-semibold text-white">₹{decision.public_cost_inr}</p>
-                  </div>
-                  {decision.savings_vs_home_inr && decision.savings_vs_home_inr > 0 && (
-                    <div className="col-span-2 rounded-lg bg-emerald-400/8 p-2.5">
-                      <p className="text-[10px] text-emerald-300/70">Save with home charging</p>
-                      <p className="mt-0.5 text-sm font-semibold text-emerald-300">₹{decision.savings_vs_home_inr} less</p>
-                    </div>
-                  )}
-                </div>
-              </section>
-            )}
-
-            {/* BEST CHARGING WINDOW */}
-            {workspace === 'charge' && bestTimeWindow && (
-              <section className="rounded-2xl border border-white/8 bg-white/[0.03] p-4">
-                <p className="text-[10px] uppercase tracking-[0.2em] text-slate-500 font-medium">Best Charging Window</p>
-                <div className="mt-3 flex items-baseline gap-2">
-                  <p className="text-lg font-bold text-emerald-300">{formatHour(bestTimeWindow.hour)}</p>
-                  <span className="text-xs text-slate-500">· {Math.round(bestTimeWindow.predicted_demand)} kW predicted</span>
-                </div>
-                <div className="mt-2 flex items-center gap-3 text-[10px] text-slate-500">
-                  <span>Range: {Math.round(bestTimeWindow.confidence_lower)}–{Math.round(bestTimeWindow.confidence_upper)} kW</span>
-                </div>
-              </section>
-            )}
-
-            {/* STATION OPTIONS */}
-            {workspace === 'charge' && stationOptions.length > 0 && (
-              <section className="rounded-2xl border border-white/8 bg-white/[0.03] p-4">
-                <p className="text-[10px] uppercase tracking-[0.2em] text-slate-500 font-medium">Nearby Stations</p>
-                <div className="mt-3 space-y-2">
-                  {stationOptions.map((station) => {
-                    const color = statusColor(station.status);
-                    const isRecommended = station.id === recommendedStation?.id;
-                    return (
+                <section className="rounded-[28px] border border-white/10 bg-white/5 p-5 backdrop-blur-xl">
+                  <p className="text-[11px] uppercase tracking-[0.26em] text-slate-400">Top Stations</p>
+                  <div className="mt-4 grid gap-3">
+                    {(data.alternatives || []).slice(0, 3).map((option) => (
                       <button
-                        key={station.id}
+                        key={option.id}
                         onClick={() => {
-                          setSelectedStation(station);
-                          setViewState((prev) => ({ ...prev, longitude: station.lng, latitude: station.lat, zoom: 14 }));
+                          setSelectedStationId(option.id);
+                          void fetchDashboard(option.id);
                         }}
-                        className={`w-full text-left rounded-lg border p-2.5 transition ${
-                          isRecommended
-                            ? `${color.bg} ${color.border}`
-                            : 'border-transparent bg-white/5 hover:bg-white/8'
+                        className={`rounded-3xl border p-4 text-left transition ${
+                          selectedStationId === option.id
+                            ? 'border-cyan-300/30 bg-cyan-300/10'
+                            : 'border-white/8 bg-[#0D131A] hover:border-white/16'
                         }`}
                       >
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <span className="h-2 w-2 rounded-full flex-shrink-0" style={{ backgroundColor: color.dot }} />
-                            <span className="text-sm font-medium text-white truncate">{station.name}</span>
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="font-medium text-white">{option.name}</p>
+                            <p className="mt-2 text-sm text-slate-400">{option.reason}</p>
                           </div>
-                          <ChevronRight size={14} className="text-slate-500 flex-shrink-0" />
+                          <span className={`rounded-full border px-2 py-1 text-[11px] uppercase tracking-[0.18em] ${statusTone(option.status)}`}>
+                            {option.status}
+                          </span>
                         </div>
-                        <div className="mt-1 flex items-center gap-3 text-[11px] text-slate-500">
-                          <span>{station.distance.toFixed(1)} km</span>
-                          <span>{Math.round(station.wait_time)} min</span>
-                          {isRecommended && <span className="text-emerald-400 font-medium">Best option</span>}
+                        <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
+                          <div className="rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-2 text-slate-300">
+                            <p className="text-slate-500">Distance</p>
+                            <p className="mt-1 font-semibold text-white">{option.distance_km.toFixed(1)} km</p>
+                          </div>
+                          <div className="rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-2 text-slate-300">
+                            <p className="text-slate-500">Queue</p>
+                            <p className="mt-1 font-semibold text-white">{option.wait_time_minutes} min</p>
+                          </div>
+                          <div className="rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-2 text-slate-300">
+                            <p className="text-slate-500">Total</p>
+                            <p className="mt-1 font-semibold text-cyan-200">{option.estimated_total_minutes} min</p>
+                          </div>
                         </div>
                       </button>
-                    );
-                  })}
-                </div>
-              </section>
-             )}
-
-            {/* Route Planner Workspace */}
-            {workspace === 'route' && (
-              <>
-                <section className="rounded-2xl border border-white/8 bg-white/[0.03] p-4">
-                  <p className="text-[10px] uppercase tracking-[0.2em] text-slate-500 font-medium">Route Planner</p>
-                  <div className="mt-3 space-y-3">
-                    <div className="rounded-lg bg-white/5 p-3">
-                      <p className="text-xs text-slate-400 mb-2">Charging stops recommended</p>
-                      <p className="text-2xl font-semibold text-white">2-3</p>
-                      <p className="text-xs text-slate-500 mt-1">For optimal journey time</p>
-                    </div>
-                    <button className="w-full bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 rounded-lg transition">Plan Route</button>
-                  </div>
-                </section>
-              </>
-            )}
-
-            {/* Smart Charging Workspace */}
-            {workspace === 'smart' && (
-              <>
-                <section className="rounded-2xl border border-white/8 bg-white/[0.03] p-4">
-                  <p className="text-[10px] uppercase tracking-[0.2em] text-slate-500 font-medium">Charging Schedule</p>
-                  <div className="mt-3 space-y-3">
-                    <div className="rounded-lg bg-emerald-400/10 border border-emerald-400/20 p-3">
-                      <p className="text-xs text-emerald-300 font-medium">Best time to charge</p>
-                      <p className="text-lg font-semibold text-white mt-1">11 PM - 2 AM</p>
-                      <p className="text-xs text-slate-400 mt-1">Low grid load period</p>
-                    </div>
-                    <button className="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-semibold py-2 rounded-lg transition">Schedule Charging</button>
-                  </div>
-                </section>
-              </>
-            )}
-
-            {/* Vehicle Workspace */}
-            {workspace === 'vehicle' && (
-              <>
-                <section className="rounded-2xl border border-white/8 bg-white/[0.03] p-4">
-                  <p className="text-[10px] uppercase tracking-[0.2em] text-slate-500 font-medium">Vehicle Profile</p>
-                  <div className="mt-3 space-y-2">
-                    <div className="rounded-lg bg-white/5 p-2.5">
-                      <p className="text-xs text-slate-400">Model</p>
-                      <p className="text-sm font-semibold text-white mt-0.5">{profile?.user_data?.vehicleModel || 'Tesla Model 3'}</p>
-                    </div>
-                    <div className="rounded-lg bg-white/5 p-2.5">
-                      <p className="text-xs text-slate-400">Battery</p>
-                      <p className="text-sm font-semibold text-white mt-0.5">{profile?.user_data?.batteryCapacityKwh || 75} kWh</p>
-                    </div>
-                  </div>
-                </section>
-              </>
-            )}
-
-            {/* History Workspace */}
-            {workspace === 'history' && (
-              <>
-                <section className="rounded-2xl border border-white/8 bg-white/[0.03] p-4">
-                  <p className="text-[10px] uppercase tracking-[0.2em] text-slate-500 font-medium">Recent Sessions</p>
-                  <div className="mt-3 space-y-2">
-                    {[1, 2, 3].map((i) => (
-                      <div key={i} className="rounded-lg bg-white/5 p-2.5">
-                        <div className="flex justify-between items-start">
-                          <p className="text-sm font-semibold text-white">Charging Station {i}</p>
-                          <span className="text-xs text-slate-400">2 days ago</span>
-                        </div>
-                        <p className="text-xs text-slate-400 mt-1">42 kWh • ₹280</p>
-                      </div>
                     ))}
                   </div>
                 </section>
               </>
             )}
 
-            {/* Saved Workspace */}
+            {workspace === 'route' && (
+              <section className="rounded-[28px] border border-white/10 bg-white/5 p-5 backdrop-blur-xl">
+                <p className="text-[11px] uppercase tracking-[0.26em] text-slate-400">Route Planner</p>
+                <div className="mt-4 grid gap-3">
+                  <label className="text-sm text-slate-300">
+                    Destination
+                    <input
+                      value={destination}
+                      onChange={(event) => setDestination(event.target.value)}
+                      className="mt-2 w-full rounded-2xl border border-white/8 bg-[#0D131A] px-4 py-3 text-white outline-none"
+                    />
+                  </label>
+                  <label className="text-sm text-slate-300">
+                    Current battery %
+                    <input
+                      value={batteryPercent}
+                      onChange={(event) => setBatteryPercent(Number(event.target.value))}
+                      type="range"
+                      min={10}
+                      max={90}
+                      className="mt-2 w-full"
+                    />
+                    <div className="mt-1 text-xs text-slate-500">{batteryPercent}% remaining</div>
+                  </label>
+                  <button
+                    onClick={() => void fetchDashboard(selectedStationId)}
+                    className="rounded-2xl bg-cyan-300 px-4 py-3 text-sm font-semibold text-[#081019]"
+                  >
+                    Recalculate route
+                  </button>
+                </div>
+
+                <div className="mt-5 space-y-3">
+                  {data.route_planner.route_options.map((option) => (
+                    <div key={option.station_id} className="rounded-2xl border border-white/8 bg-[#0D131A] p-4">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <p className="font-medium text-white">{option.station_name}</p>
+                          <p className="mt-1 text-sm text-slate-400">{option.why}</p>
+                        </div>
+                        <button
+                          onClick={() => {
+                            setSelectedStationId(option.station_id);
+                            void fetchDashboard(option.station_id);
+                          }}
+                          className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-slate-200"
+                        >
+                          Focus
+                        </button>
+                      </div>
+                      <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
+                        <div className="rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-2">
+                          <p className="text-slate-500">ETA</p>
+                          <p className="mt-1 font-semibold text-white">{option.eta_minutes} min</p>
+                        </div>
+                        <div className="rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-2">
+                          <p className="text-slate-500">Queue at arrival</p>
+                          <p className="mt-1 font-semibold text-white">{option.queue_at_arrival_minutes} min</p>
+                        </div>
+                        <div className="rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-2">
+                          <p className="text-slate-500">Stop total</p>
+                          <p className="mt-1 font-semibold text-cyan-200">{option.total_stop_minutes} min</p>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() =>
+                          void performWorkspaceUpdate(
+                            'save-route',
+                            () =>
+                              dashboardAPI.saveUserRoute(token!, {
+                                station_id: option.station_id,
+                                station_name: option.station_name,
+                                distance_km: data.route?.distance_km || 0,
+                                eta_minutes: option.eta_minutes,
+                              }),
+                            setWorkspaceState,
+                          )
+                        }
+                        className="mt-3 inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-slate-300"
+                      >
+                        <Route size={12} />
+                        Save route
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
+
+            {workspace === 'smart' && (
+              <>
+                <section className="rounded-[28px] border border-white/10 bg-white/5 p-5 backdrop-blur-xl">
+                  <p className="text-[11px] uppercase tracking-[0.26em] text-slate-400">Smart Charging</p>
+                  <div className="mt-4 rounded-3xl border border-emerald-400/20 bg-emerald-400/10 p-4">
+                    <p className="text-base font-semibold text-white">{bestWindow?.headline || 'No optimal window found yet'}</p>
+                    <p className="mt-2 text-sm text-emerald-100/85">{bestWindow?.reason}</p>
+                    <p className="mt-2 text-sm text-emerald-100/75">{bestWindow?.impact}</p>
+                  </div>
+                  <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                    <div className="rounded-2xl border border-white/8 bg-[#0D131A] p-4">
+                      <p className="text-xs text-slate-500">Projected savings</p>
+                      <p className="mt-2 text-lg font-semibold text-white">₹{Math.round(data.decision_support.public_cost_inr - (data.decision_support.home_cost_inr || data.decision_support.public_cost_inr - 40))}</p>
+                    </div>
+                    <div className="rounded-2xl border border-white/8 bg-[#0D131A] p-4">
+                      <p className="text-xs text-slate-500">Queue reduction</p>
+                      <p className="mt-2 text-lg font-semibold text-white">{data.decision_support.queue_time_savings_minutes} min</p>
+                    </div>
+                    <div className="rounded-2xl border border-white/8 bg-[#0D131A] p-4">
+                      <p className="text-xs text-slate-500">Grid impact</p>
+                      <p className="mt-2 text-lg font-semibold text-white">{data.decision_support.congestion_reduction_percent}% lower congestion</p>
+                    </div>
+                  </div>
+                  {bestWindow && (
+                    <div className="mt-4 flex gap-2">
+                      <button
+                        onClick={() =>
+                          void performWorkspaceUpdate(
+                            'save-window',
+                            () =>
+                              dashboardAPI.saveChargingWindow(token!, {
+                                time_label: bestWindow.time_label,
+                                predicted_demand: bestWindow.predicted_demand,
+                                headline: bestWindow.headline,
+                              }),
+                            setWorkspaceState,
+                          )
+                        }
+                        className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-200"
+                      >
+                        <Heart size={14} />
+                        Save window
+                      </button>
+                      <button
+                        onClick={() =>
+                          void performWorkspaceUpdate(
+                            'schedule',
+                            () =>
+                              dashboardAPI.scheduleUserCharge(token!, {
+                                station_name: selectedStation?.name || data.nearest_station?.name || 'Nearest station',
+                                time_label: bestWindow.time_label,
+                                estimated_cost_inr: data.decision_support.public_cost_inr,
+                                energy_kwh: data.decision_support.target_energy_kwh,
+                              }),
+                            setWorkspaceState,
+                          )
+                        }
+                        className="inline-flex items-center gap-2 rounded-xl bg-cyan-300 px-4 py-3 text-sm font-semibold text-[#081019]"
+                      >
+                        <Clock3 size={14} />
+                        Schedule charging
+                      </button>
+                    </div>
+                  )}
+                </section>
+
+                {forecast && (
+                  <section className="rounded-[28px] border border-white/10 bg-white/5 p-5 backdrop-blur-xl">
+                    <p className="text-[11px] uppercase tracking-[0.26em] text-slate-400">Demand Window</p>
+                    <div className="mt-4 h-[220px]">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <AreaChart data={forecast.forecasts}>
+                          <defs>
+                            <linearGradient id="smartFill" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="0%" stopColor="#34d399" stopOpacity={0.35} />
+                              <stop offset="100%" stopColor="#34d399" stopOpacity={0.02} />
+                            </linearGradient>
+                          </defs>
+                          <CartesianGrid vertical={false} stroke="rgba(148,163,184,0.12)" />
+                          <XAxis dataKey="label" tick={{ fill: '#94a3b8', fontSize: 11 }} axisLine={false} tickLine={false} />
+                          <YAxis tick={{ fill: '#94a3b8', fontSize: 11 }} axisLine={false} tickLine={false} />
+                          <Tooltip
+                            contentStyle={{ background: '#091019', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 16 }}
+                            formatter={(value: number) => [`${Math.round(value)} kW`, 'Predicted demand']}
+                          />
+                          {bestWindow && <ReferenceLine x={bestWindow.time_label.replace(' ', ':00 ')} stroke="#38bdf8" strokeDasharray="3 3" />}
+                          <Area type="monotone" dataKey="predicted_demand" stroke="#34d399" strokeWidth={2.4} fill="url(#smartFill)" />
+                        </AreaChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </section>
+                )}
+              </>
+            )}
+
+            {workspace === 'history' && (
+              <section className="rounded-[28px] border border-white/10 bg-white/5 p-5 backdrop-blur-xl">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-[11px] uppercase tracking-[0.26em] text-slate-400">Session History</p>
+                    <h3 className="mt-2 text-lg font-semibold text-white">Your saved operational activity</h3>
+                  </div>
+                  <button
+                    onClick={() => downloadCsv('gridsense-user-history.csv', workspaceState?.history || [])}
+                    className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-200"
+                  >
+                    <Download size={14} />
+                    CSV
+                  </button>
+                </div>
+                <div className="mt-4 space-y-3">
+                  {(workspaceState?.history || []).length === 0 ? (
+                    <div className="rounded-2xl border border-white/8 bg-[#0D131A] p-4 text-sm text-slate-400">
+                      No saved charging activity yet. Use navigation, route save, or charging schedule actions to build real history.
+                    </div>
+                  ) : (
+                    workspaceState?.history.map((entry: Record<string, any>) => (
+                      <div key={entry.id} className="rounded-2xl border border-white/8 bg-[#0D131A] p-4">
+                        <p className="font-medium text-white">{entry.station_name || entry.type}</p>
+                        <p className="mt-1 text-sm text-slate-400">{entry.time_label || `${entry.distance_km ?? 0} km route`}</p>
+                        <p className="mt-2 text-xs text-slate-500">{new Date(entry.created_at).toLocaleString()}</p>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </section>
+            )}
+
             {workspace === 'saved' && (
-              <>
-                <section className="rounded-2xl border border-white/8 bg-white/[0.03] p-4">
-                  <p className="text-[10px] uppercase tracking-[0.2em] text-slate-500 font-medium">Saved Items</p>
-                  <div className="mt-3 space-y-2">
-                    <div className="rounded-lg bg-white/5 p-2.5">
-                      <p className="text-sm font-semibold text-white">Whitefield Station</p>
-                      <p className="text-xs text-slate-400 mt-1">5.2 km away</p>
-                    </div>
-                    <div className="rounded-lg bg-white/5 p-2.5">
-                      <p className="text-sm font-semibold text-white">Work Commute Route</p>
-                      <p className="text-xs text-slate-400 mt-1">15 km • 2 stops</p>
-                    </div>
-                  </div>
-                </section>
-              </>
-            )}
-
-            {/* Insights Workspace */}
-            {workspace === 'insights' && (
-              <>
-                <section className="rounded-2xl border border-white/8 bg-white/[0.03] p-4">
-                  <p className="text-[10px] uppercase tracking-[0.2em] text-slate-500 font-medium">Your Insights</p>
-                  <div className="mt-3 space-y-2">
-                    <div className="rounded-lg bg-blue-400/10 border border-blue-400/20 p-2.5">
-                      <p className="text-xs text-blue-300">Average charge time</p>
-                      <p className="text-lg font-semibold text-white mt-0.5">52 min</p>
-                    </div>
-                    <div className="rounded-lg bg-green-400/10 border border-green-400/20 p-2.5">
-                      <p className="text-xs text-green-300">Monthly savings</p>
-                      <p className="text-lg font-semibold text-white mt-0.5">₹420</p>
+              <section className="rounded-[28px] border border-white/10 bg-white/5 p-5 backdrop-blur-xl">
+                <p className="text-[11px] uppercase tracking-[0.26em] text-slate-400">Saved Items</p>
+                <div className="mt-4 space-y-4">
+                  <div>
+                    <p className="text-sm font-medium text-white">Stations</p>
+                    <div className="mt-2 space-y-2">
+                      {savedStations.length === 0 ? (
+                        <p className="text-sm text-slate-500">No saved stations yet.</p>
+                      ) : (
+                        savedStations.map((station) => (
+                          <div key={station.id} className="rounded-2xl border border-white/8 bg-[#0D131A] p-4">
+                            <div className="flex items-center justify-between gap-3">
+                              <div>
+                                <p className="font-medium text-white">{station.name}</p>
+                                <p className="mt-1 text-sm text-slate-400">{station.operator}</p>
+                              </div>
+                              <button
+                                onClick={() =>
+                                  void performWorkspaceUpdate('unsave-station', () => dashboardAPI.unsaveUserStation(token!, station.id), setWorkspaceState)
+                                }
+                                className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-slate-200"
+                              >
+                                Remove
+                              </button>
+                            </div>
+                          </div>
+                        ))
+                      )}
                     </div>
                   </div>
-                </section>
-              </>
-            )}
 
-            {/* Notifications/Alerts Workspace */}
-            {workspace === 'notifications' && (
-              <>
-                <section className="rounded-2xl border border-white/8 bg-white/[0.03] p-4">
-                  <p className="text-[10px] uppercase tracking-[0.2em] text-slate-500 font-medium">Notifications</p>
-                  <div className="mt-3 space-y-2">
-                    <div className="rounded-lg bg-amber-400/10 border border-amber-400/20 p-2.5">
-                      <p className="text-xs font-medium text-amber-300">Station maintenance</p>
-                      <p className="text-xs text-slate-400 mt-1">Whitefield station closing 2-4 PM</p>
-                    </div>
-                    <div className="rounded-lg bg-white/5 p-2.5">
-                      <p className="text-xs text-slate-300">Promo: 20% off off-peak charging</p>
-                      <p className="text-xs text-slate-500 mt-1">Available until Friday</p>
+                  <div>
+                    <p className="text-sm font-medium text-white">Routes</p>
+                    <div className="mt-2 space-y-2">
+                      {savedRoutes.length === 0 ? <p className="text-sm text-slate-500">No saved routes yet.</p> : savedRoutes.map((route) => (
+                        <div key={route.saved_at} className="rounded-2xl border border-white/8 bg-[#0D131A] p-4">
+                          <p className="font-medium text-white">{route.station_name}</p>
+                          <p className="mt-1 text-sm text-slate-400">{route.distance_km} km • {route.eta_minutes} min ETA</p>
+                        </div>
+                      ))}
                     </div>
                   </div>
-                </section>
-              </>
+
+                  <div>
+                    <p className="text-sm font-medium text-white">Favorite windows</p>
+                    <div className="mt-2 space-y-2">
+                      {savedWindows.length === 0 ? <p className="text-sm text-slate-500">No saved windows yet.</p> : savedWindows.map((window) => (
+                        <div key={window.time_label} className="rounded-2xl border border-white/8 bg-[#0D131A] p-4">
+                          <div className="flex items-center justify-between gap-3">
+                            <div>
+                              <p className="font-medium text-white">{window.time_label}</p>
+                              <p className="mt-1 text-sm text-slate-400">{window.headline}</p>
+                            </div>
+                            <button
+                              onClick={() =>
+                                void performWorkspaceUpdate(
+                                  'remove-window',
+                                  () => dashboardAPI.removeChargingWindow(token!, {
+                                    time_label: String(window.time_label),
+                                    predicted_demand: Number(window.predicted_demand || 0),
+                                    headline: String(window.headline || ''),
+                                  }),
+                                  setWorkspaceState,
+                                )
+                              }
+                              className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-slate-200"
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </section>
             )}
 
-            {/* Wallet Workspace */}
+            {workspace === 'alerts' && (
+              <section className="rounded-[28px] border border-white/10 bg-white/5 p-5 backdrop-blur-xl">
+                <p className="text-[11px] uppercase tracking-[0.26em] text-slate-400">Alerts</p>
+                <div className="mt-4 space-y-3">
+                  {activeAlerts.map((alert) => (
+                    <div key={alert.id} className="rounded-2xl border border-white/8 bg-[#0D131A] p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="font-medium text-white">{alert.title}</p>
+                          <p className="mt-1 text-sm text-slate-400">{alert.message}</p>
+                          <p className="mt-2 text-xs text-slate-500">{new Date(alert.created_at).toLocaleString()}</p>
+                        </div>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() =>
+                              void performWorkspaceUpdate(
+                                'read-alert',
+                                () => dashboardAPI.updateUserAlert(token!, { alert_id: alert.id, read: true }),
+                                setWorkspaceState,
+                              )
+                            }
+                            className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-slate-200"
+                          >
+                            Mark read
+                          </button>
+                          <button
+                            onClick={() =>
+                              void performWorkspaceUpdate(
+                                'dismiss-alert',
+                                () => dashboardAPI.updateUserAlert(token!, { alert_id: alert.id, dismissed: true }),
+                                setWorkspaceState,
+                              )
+                            }
+                            className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-slate-200"
+                          >
+                            Dismiss
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
+
             {workspace === 'wallet' && (
-              <>
-                <section className="rounded-2xl border border-white/8 bg-white/[0.03] p-4">
-                  <p className="text-[10px] uppercase tracking-[0.2em] text-slate-500 font-medium">Wallet & Billing</p>
-                  <div className="mt-3 space-y-2">
-                    <div className="rounded-lg bg-white/5 p-2.5">
-                      <p className="text-xs text-slate-400">Available Balance</p>
-                      <p className="text-lg font-semibold text-emerald-300 mt-0.5">₹2,450</p>
-                    </div>
-                    <div className="rounded-lg bg-white/5 p-2.5">
-                      <p className="text-xs text-slate-400">This month</p>
-                      <p className="text-sm font-semibold text-white mt-0.5">₹1,820 spent</p>
-                    </div>
+              <section className="rounded-[28px] border border-white/10 bg-white/5 p-5 backdrop-blur-xl">
+                <p className="text-[11px] uppercase tracking-[0.26em] text-slate-400">Wallet</p>
+                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                  <div className="rounded-2xl border border-white/8 bg-[#0D131A] p-4">
+                    <p className="text-xs text-slate-500">Balance</p>
+                    <p className="mt-2 text-2xl font-semibold text-white">₹{workspaceState?.wallet?.balance_inr?.toFixed(0) || '0'}</p>
                   </div>
-                </section>
-              </>
+                  <div className="rounded-2xl border border-white/8 bg-[#0D131A] p-4">
+                    <p className="text-xs text-slate-500">Monthly savings</p>
+                    <p className="mt-2 text-2xl font-semibold text-white">₹{workspaceState?.wallet?.monthly_savings_inr?.toFixed(0) || '0'}</p>
+                  </div>
+                </div>
+                <div className="mt-4 flex gap-2">
+                  {[250, 500, 1000].map((amount) => (
+                    <button
+                      key={amount}
+                      onClick={() =>
+                        void performWorkspaceUpdate('recharge-wallet', () => dashboardAPI.rechargeUserWallet(token!, amount), setWorkspaceState)
+                      }
+                      className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-200"
+                    >
+                      <Coins size={14} />
+                      Add ₹{amount}
+                    </button>
+                  ))}
+                </div>
+                <div className="mt-4 space-y-2">
+                  {(workspaceState?.wallet?.transactions || []).map((transaction: Record<string, any>) => (
+                    <div key={transaction.id} className="rounded-2xl border border-white/8 bg-[#0D131A] p-4">
+                      <p className="font-medium text-white">{transaction.type}</p>
+                      <p className="mt-1 text-sm text-slate-400">₹{transaction.amount_inr}</p>
+                    </div>
+                  ))}
+                </div>
+              </section>
             )}
 
-            {/* Settings Workspace */}
-            {workspace === 'settings' && (
-              <>
-                <section className="rounded-2xl border border-white/8 bg-white/[0.03] p-4">
-                  <p className="text-[10px] uppercase tracking-[0.2em] text-slate-500 font-medium">Settings</p>
-                  <div className="mt-3 space-y-3">
-                    <button className="w-full text-left rounded-lg border border-white/8 bg-white/5 p-3 hover:bg-white/10 transition">
-                      <p className="text-sm font-medium text-white">Account Settings</p>
-                    </button>
-                    <button className="w-full text-left rounded-lg border border-white/8 bg-white/5 p-3 hover:bg-white/10 transition">
-                      <p className="text-sm font-medium text-white">Preferences</p>
-                    </button>
-                    <button className="w-full text-left rounded-lg border border-white/8 bg-white/5 p-3 hover:bg-white/10 transition">
-                      <p className="text-sm font-medium text-white">Privacy & Security</p>
-                    </button>
-                  </div>
-                </section>
-              </>
+            {workspace === 'settings' && workspaceState && (
+              <section className="rounded-[28px] border border-white/10 bg-white/5 p-5 backdrop-blur-xl">
+                <p className="text-[11px] uppercase tracking-[0.26em] text-slate-400">Settings</p>
+                <div className="mt-4 space-y-3">
+                  {[
+                    { key: 'notification_enabled', label: 'Enable notifications' },
+                    { key: 'queue_alerts', label: 'Queue alerts' },
+                    { key: 'price_alerts', label: 'Price alerts' },
+                    { key: 'privacy_mode', label: 'Privacy mode' },
+                  ].map((item) => (
+                    <label key={item.key} className="flex items-center justify-between rounded-2xl border border-white/8 bg-[#0D131A] px-4 py-3 text-sm text-slate-200">
+                      <span>{item.label}</span>
+                      <input
+                        type="checkbox"
+                        checked={Boolean(workspaceState?.settings?.[item.key as keyof typeof workspaceState.settings])}
+                        onChange={(event) =>
+                          void performWorkspaceUpdate(
+                            'update-settings',
+                            () => dashboardAPI.updateUserSettings(token!, { [item.key]: event.target.checked }),
+                            setWorkspaceState,
+                          )
+                        }
+                      />
+                    </label>
+                  ))}
+                  <label className="block text-sm text-slate-300">
+                    Preferred charging speed
+                    <select
+                      value={workspaceState.settings?.preferred_speed || 'fast'}
+                      onChange={(event) =>
+                        void performWorkspaceUpdate(
+                          'update-settings',
+                          () => dashboardAPI.updateUserSettings(token!, { preferred_speed: event.target.value }),
+                          setWorkspaceState,
+                        )
+                      }
+                      className="mt-2 w-full rounded-2xl border border-white/8 bg-[#0D131A] px-4 py-3 text-white"
+                    >
+                      <option value="slow">Slow</option>
+                      <option value="fast">Fast</option>
+                      <option value="rapid">Rapid</option>
+                    </select>
+                  </label>
+                </div>
+              </section>
             )}
 
-            {/* DEMO MODE NOTICE */}
-            {isDemoMode && (
-              <div className="rounded-lg border border-amber-400/20 bg-amber-400/8 p-3">
-                <p className="text-[11px] text-amber-200/80">
-                  <span className="font-medium">Demo Mode:</span> Showing Bengaluru EV grid data. Real-time predictions use synthetic demand patterns.
-                </p>
+            <section className="rounded-[28px] border border-white/10 bg-white/5 p-5 backdrop-blur-xl">
+              <p className="text-[11px] uppercase tracking-[0.26em] text-slate-400">Current Session</p>
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                <div className="rounded-2xl border border-white/8 bg-[#0D131A] p-4">
+                  <div className="flex items-center gap-2 text-slate-300">
+                    <Route size={15} className="text-cyan-300" />
+                    <span className="text-sm">Route</span>
+                  </div>
+                  <p className="mt-2 text-xl font-semibold text-white">{data.route ? `${data.route.distance_km.toFixed(1)} km` : '--'}</p>
+                </div>
+                <div className="rounded-2xl border border-white/8 bg-[#0D131A] p-4">
+                  <div className="flex items-center gap-2 text-slate-300">
+                    <Wallet size={15} className="text-emerald-300" />
+                    <span className="text-sm">Cost</span>
+                  </div>
+                  <p className="mt-2 text-xl font-semibold text-white">₹{Math.round(data.decision_support.public_cost_inr)}</p>
+                </div>
+                <div className="rounded-2xl border border-white/8 bg-[#0D131A] p-4">
+                  <div className="flex items-center gap-2 text-slate-300">
+                    <Zap size={15} className="text-cyan-300" />
+                    <span className="text-sm">Energy</span>
+                  </div>
+                  <p className="mt-2 text-xl font-semibold text-white">{Math.round(data.decision_support.target_energy_kwh)} kWh</p>
+                </div>
+                <div className="rounded-2xl border border-white/8 bg-[#0D131A] p-4">
+                  <div className="flex items-center gap-2 text-slate-300">
+                    <Bell size={15} className="text-emerald-300" />
+                    <span className="text-sm">Confidence</span>
+                  </div>
+                  <p className="mt-2 text-xl font-semibold text-white">{data.load_context?.explanation?.confidence || 'N/A'}</p>
+                </div>
               </div>
+            </section>
+
+            {(error || actionPending) && (
+              <section className={`rounded-2xl border px-4 py-3 text-sm ${error ? 'border-rose-400/20 bg-rose-400/10 text-rose-100' : 'border-cyan-400/20 bg-cyan-400/10 text-cyan-100'}`}>
+                {error || `Working on ${actionPending}...`}
+              </section>
             )}
-          </div>
+          </aside>
         </div>
       </main>
     </div>

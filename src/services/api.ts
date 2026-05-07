@@ -23,6 +23,7 @@ import {
   mockSensitivity,
   mockSimulation,
 } from './mockData';
+import { z } from 'zod';
 
 const API_URL = import.meta.env.VITE_API_URL ?? '/api';
 
@@ -616,6 +617,40 @@ export interface OperatorDashboardPayload {
   all_zones: Zone[];
   spatial: SpatialData;
   workflow: WorkflowState;
+  incidents: Array<{
+    id: string;
+    title: string;
+    zone: string;
+    severity: string;
+    status: string;
+    timeline_headline: string;
+    reason: string;
+    impact: string;
+  }>;
+  stations: Array<Station & {
+    queue_trend: string;
+    predicted_wait_growth: number;
+    health_score: number;
+    connector_availability: number;
+    active_sessions: number;
+    load_capacity_ratio: number;
+    downtime_probability: number;
+  }>;
+  system_health: {
+    backend_latency_ms: number;
+    api_health: string;
+    polling_health: string;
+    forecast_engine_status: string;
+    db_connectivity: string;
+    model_drift_percent: number;
+    memory_usage_mb: number;
+    uptime_hours: number;
+    cache_health: string;
+    transport_status: string;
+    heartbeat_at: string;
+    selected_zone_observed_kw?: number | null;
+    scenario: string;
+  };
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -664,12 +699,100 @@ export interface UserDashboardPayload {
     status: string;
     explanation: ExplainabilityPayload;
   };
+  route_planner: {
+    destination: string;
+    battery_percent: number;
+    current_route: RoutePayload | null;
+    selected_station_name: string | null;
+    route_options: Array<{
+      station_id: number;
+      station_name: string;
+      eta_minutes: number;
+      queue_at_arrival_minutes: number;
+      total_stop_minutes: number;
+      headline: string;
+      why: string;
+    }>;
+  };
+  workspace_state: {
+    history: Array<Record<string, any>>;
+    saved: {
+      stations: Array<Record<string, any>>;
+      routes: Array<Record<string, any>>;
+      windows: Array<Record<string, any>>;
+    };
+    alerts: Array<{
+      id: string;
+      title: string;
+      message: string;
+      severity: string;
+      read: boolean;
+      dismissed: boolean;
+      created_at: string;
+    }>;
+    wallet: {
+      balance_inr: number;
+      monthly_savings_inr: number;
+      transactions: Array<Record<string, any>>;
+    };
+    settings: {
+      notification_enabled: boolean;
+      queue_alerts: boolean;
+      price_alerts: boolean;
+      preferred_speed: string;
+      privacy_mode: boolean;
+    };
+  };
 }
 
 // ─── Backend liveness flag (set by request()) ───
 // true  = last request reached the real backend
 // false = last request hit the frontend fallback
 export let isBackendLive = false;
+
+const operatorDashboardSchema = z.object({
+  role: z.literal('operator'),
+  scenario: z.string(),
+  zone: z.object({ id: z.number(), name: z.string() }).passthrough(),
+  grid_stress: z.object({ predicted_load: z.number(), capacity: z.number(), status: z.string() }).passthrough(),
+  action_queue: z.array(z.any()),
+  zone_rankings: z.array(z.any()),
+  all_zones: z.array(z.any()),
+}).passthrough();
+
+const userDashboardSchema = z.object({
+  role: z.literal('user'),
+  effective_location: z.object({ lat: z.number(), lng: z.number() }).passthrough(),
+  station_options: z.array(z.any()),
+  decision_support: z.object({ target_energy_kwh: z.number(), public_cost_inr: z.number() }).passthrough(),
+  workspace_state: z.object({
+    history: z.array(z.any()),
+    saved: z.object({
+      stations: z.array(z.any()),
+      routes: z.array(z.any()),
+      windows: z.array(z.any()),
+    }).passthrough(),
+    alerts: z.array(z.any()),
+    wallet: z.object({ balance_inr: z.number(), monthly_savings_inr: z.number(), transactions: z.array(z.any()) }).passthrough(),
+    settings: z.object({
+      notification_enabled: z.boolean(),
+      queue_alerts: z.boolean(),
+      price_alerts: z.boolean(),
+      preferred_speed: z.string(),
+      privacy_mode: z.boolean(),
+    }).passthrough(),
+  }).passthrough(),
+}).passthrough();
+
+const copilotMessageSchema = z.object({
+  query: z.string(),
+  answer: z.string(),
+  source: z.enum(['risk_analysis', 'forecast', 'recommendation', 'optimization', 'unknown']),
+  confidence: z.enum(['High', 'Medium', 'Low']),
+  data_sources: z.array(z.string()),
+  follow_up_suggestions: z.array(z.string()),
+  reasoning: z.record(z.string(), z.any()),
+});
 
 // ─── Deterministic forecast curve ───
 // Derives a 24-hour demand curve from a base capacity value.
@@ -729,6 +852,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     isBackendLive = true;
     return raw as T;
   } catch (error) {
+    if (path.startsWith('/portal/') || path.startsWith('/ai/copilot')) {
+      throw error;
+    }
     const fallback = getFallbackResponse<T>(path);
     if (fallback !== undefined) {
       isBackendLive = false;
@@ -739,7 +865,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 function withAuth(token: string): HeadersInit {
-  return { Authorization: `Bearer ${token}` };
+  return { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
 }
 
 function getFallbackResponse<T>(path: string): T | undefined {
@@ -829,6 +955,23 @@ function getFallbackResponse<T>(path: string): T | undefined {
       ],
       spatial: { heatmap_points: [], overload_zones: [], congestion_corridors: [] },
       workflow: { active_actions: [], recent_events: [] },
+      incidents: [],
+      stations: [],
+      system_health: {
+        backend_latency_ms: 120,
+        api_health: 'healthy',
+        polling_health: 'healthy',
+        forecast_engine_status: 'active',
+        db_connectivity: 'connected',
+        model_drift_percent: 2,
+        memory_usage_mb: 184,
+        uptime_hours: 24,
+        cache_health: 'warm',
+        transport_status: 'polling',
+        heartbeat_at: new Date().toISOString(),
+        selected_zone_observed_kw: 612,
+        scenario: 'normal',
+      },
     };
     return mockOperatorDashboard as T;
   }
@@ -872,6 +1015,26 @@ function getFallbackResponse<T>(path: string): T | undefined {
       },
       charging_recommendation: { time_label: '23:00', predicted_demand: 380, headline: 'Best charging window: 11 PM – 1 AM', reason: 'Demand drops 40% after 22:00 as commercial load clears. Off-peak rates apply.', impact: 'Save ₹35–60 vs peak charging cost.', confidence: 'HIGH' },
       load_context: { prediction: 600, confidence_lower: 550, confidence_upper: 650, status: 'STABLE', explanation: { reason: 'Demand within normal range.', impact: 'No grid constraints on charging.', confidence: 'HIGH' } },
+      route_planner: {
+        destination: 'Flexible charging stop',
+        battery_percent: 38,
+        current_route: null,
+        selected_station_name: 'Tata Power EV Hub — Whitefield',
+        route_options: [],
+      },
+      workspace_state: {
+        history: [],
+        saved: { stations: [], routes: [], windows: [] },
+        alerts: [],
+        wallet: { balance_inr: 1800, monthly_savings_inr: 0, transactions: [] },
+        settings: {
+          notification_enabled: true,
+          queue_alerts: true,
+          price_alerts: true,
+          preferred_speed: 'fast',
+          privacy_mode: false,
+        },
+      },
     };
     return mockUserDashboard as T;
   }
@@ -1012,7 +1175,7 @@ export const dashboardAPI = {
     if (zone) params.set('zone', zone);
     return request<OperatorDashboardPayload>(`/portal/operator?${params.toString()}`, {
       headers: withAuth(token),
-    });
+    }).then((payload) => operatorDashboardSchema.parse(payload) as unknown as OperatorDashboardPayload);
   },
 
   getUserDashboard: (
@@ -1023,8 +1186,10 @@ export const dashboardAPI = {
       selected_station_id?: number | null;
       vehicle_model?: string;
       battery_capacity_kwh?: number | null;
+      battery_percent?: number | null;
       home_charging_access?: boolean | null;
       typical_charging_time?: string | null;
+      destination?: string;
     }
   ): Promise<UserDashboardPayload> => {
     const query = new URLSearchParams({
@@ -1034,11 +1199,13 @@ export const dashboardAPI = {
     if (params.selected_station_id != null) query.set('selected_station_id', String(params.selected_station_id));
     if (params.vehicle_model) query.set('vehicle_model', params.vehicle_model);
     if (params.battery_capacity_kwh != null) query.set('battery_capacity_kwh', String(params.battery_capacity_kwh));
+    if (params.battery_percent != null) query.set('battery_percent', String(params.battery_percent));
     if (params.home_charging_access != null) query.set('home_charging_access', String(params.home_charging_access));
     if (params.typical_charging_time) query.set('typical_charging_time', params.typical_charging_time);
+    if (params.destination) query.set('destination', params.destination);
     return request<UserDashboardPayload>(`/portal/user?${query.toString()}`, {
       headers: withAuth(token),
-    });
+    }).then((payload) => userDashboardSchema.parse(payload) as unknown as UserDashboardPayload);
   },
 
   acknowledgeAction: (token: string, actionTitle: string): Promise<WorkflowAction> =>
@@ -1058,6 +1225,76 @@ export const dashboardAPI = {
   getWorkflowTimeline: (token: string, limit: number = 50): Promise<{ events: WorkflowEvent[] }> =>
     request<{ events: WorkflowEvent[] }>(`/portal/workflow/timeline?limit=${limit}`, {
       headers: withAuth(token),
+    }),
+
+  saveUserStation: (token: string, stationId: number) =>
+    request<UserDashboardPayload['workspace_state']>('/portal/user/save-station', {
+      method: 'POST',
+      headers: withAuth(token),
+      body: JSON.stringify({ station_id: stationId }),
+    }),
+
+  unsaveUserStation: (token: string, stationId: number) =>
+    request<UserDashboardPayload['workspace_state']>('/portal/user/unsave-station', {
+      method: 'POST',
+      headers: withAuth(token),
+      body: JSON.stringify({ station_id: stationId }),
+    }),
+
+  saveUserRoute: (token: string, route: { station_id: number; station_name: string; distance_km: number; eta_minutes: number }) =>
+    request<UserDashboardPayload['workspace_state']>('/portal/user/save-route', {
+      method: 'POST',
+      headers: withAuth(token),
+      body: JSON.stringify(route),
+    }),
+
+  saveChargingWindow: (token: string, window: { time_label: string; predicted_demand: number; headline: string }) =>
+    request<UserDashboardPayload['workspace_state']>('/portal/user/save-window', {
+      method: 'POST',
+      headers: withAuth(token),
+      body: JSON.stringify(window),
+    }),
+
+  removeChargingWindow: (token: string, window: { time_label: string; predicted_demand: number; headline: string }) =>
+    request<UserDashboardPayload['workspace_state']>('/portal/user/remove-window', {
+      method: 'POST',
+      headers: withAuth(token),
+      body: JSON.stringify(window),
+    }),
+
+  scheduleUserCharge: (token: string, schedule: { station_name: string; time_label: string; estimated_cost_inr: number; energy_kwh: number }) =>
+    request<UserDashboardPayload['workspace_state']>('/portal/user/schedule', {
+      method: 'POST',
+      headers: withAuth(token),
+      body: JSON.stringify(schedule),
+    }),
+
+  recordUserNavigation: (token: string, trip: { station_id: number; station_name: string; distance_km: number; eta_minutes: number }) =>
+    request<UserDashboardPayload['workspace_state']>('/portal/user/record-navigation', {
+      method: 'POST',
+      headers: withAuth(token),
+      body: JSON.stringify(trip),
+    }),
+
+  updateUserAlert: (token: string, alert: { alert_id: string; read?: boolean; dismissed?: boolean }) =>
+    request<UserDashboardPayload['workspace_state']>('/portal/user/alert', {
+      method: 'POST',
+      headers: withAuth(token),
+      body: JSON.stringify(alert),
+    }),
+
+  rechargeUserWallet: (token: string, amount_inr: number) =>
+    request<UserDashboardPayload['workspace_state']>('/portal/user/wallet/recharge', {
+      method: 'POST',
+      headers: withAuth(token),
+      body: JSON.stringify({ amount_inr }),
+    }),
+
+  updateUserSettings: (token: string, patch: Partial<UserDashboardPayload['workspace_state']['settings']>) =>
+    request<UserDashboardPayload['workspace_state']>('/portal/user/settings', {
+      method: 'POST',
+      headers: withAuth(token),
+      body: JSON.stringify(patch),
     }),
 };
 
@@ -1098,7 +1335,7 @@ export const copilotAPI = {
         zone_name: params.zone_name,
         scenario: params.scenario || 'normal',
       }),
-    });
+    }).then((payload) => copilotMessageSchema.parse(payload) as CopilotMessage);
   },
 
   getHistory: (token: string, limit: number = 20): Promise<{ messages: CopilotHistoryItem[]; total_messages: number }> =>

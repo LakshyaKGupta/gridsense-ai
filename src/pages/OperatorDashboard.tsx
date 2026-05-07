@@ -1,12 +1,14 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Activity, AlertTriangle, ArrowRight, Clock3, Gauge, LogOut, MapPin, Network, ShieldCheck, TrendingUp } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Activity, AlertTriangle, ArrowRight, Clock3, Download, Expand, Gauge, LogOut, MapPin, Network, Search, ShieldCheck, TrendingUp } from 'lucide-react';
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import Map, { Marker, NavigationControl } from 'react-map-gl/maplibre';
+import Map, { Layer, Marker, NavigationControl, Source, type MapRef } from 'react-map-gl/maplibre';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { dashboardAPI, isBackendLive, OperatorDashboardPayload } from '../services/api';
 import CopilotPanel from '../components/ui/CopilotPanel';
+import Papa from 'papaparse';
+import jsPDF from 'jspdf';
 
 const MAP_STYLE = 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json';
 
@@ -25,6 +27,16 @@ const WORKSPACES: { id: Workspace; label: string }[] = [
   { id: 'system', label: 'System' },
 ];
 
+function downloadCsv(filename: string, rows: Record<string, unknown>[]) {
+  const csv = Papa.unparse(rows);
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(link.href);
+}
+
 export default function OperatorDashboard() {
   const { token, logout, profile } = useAuth();
   const [selectedZone, setSelectedZone] = useState(profile?.operator_data?.assignedZone || 'Whitefield');
@@ -36,6 +48,13 @@ export default function OperatorDashboard() {
   const [error, setError] = useState<string | null>(null);
   const [viewState, setViewState] = useState({ longitude: 77.63, latitude: 12.97, zoom: 10.8 });
   const [lastUpdatedAt, setLastUpdatedAt] = useState<string | null>(null);
+  const [workflowBusy, setWorkflowBusy] = useState<string | null>(null);
+  const [alertSeverityFilter, setAlertSeverityFilter] = useState<'ALL' | 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW' | 'INFO'>('ALL');
+  const [stationSearch, setStationSearch] = useState('');
+  const [stationSort, setStationSort] = useState<'utilization' | 'wait' | 'health'>('utilization');
+  const mapShellRef = useRef<HTMLDivElement>(null);
+  const overviewMapRef = useRef<MapRef | null>(null);
+  const operationsMapRef = useRef<MapRef | null>(null);
 
   const mockData: OperatorDashboardPayload = {
     role: 'operator',
@@ -101,7 +120,25 @@ export default function OperatorDashboard() {
     ],
     spatial: { heatmap_points: [], overload_zones: [], congestion_corridors: [] },
     workflow: { active_actions: [], recent_events: [] },
+    incidents: [],
+    stations: [],
+    system_health: {
+      backend_latency_ms: 120,
+      api_health: 'healthy',
+      polling_health: 'healthy',
+      forecast_engine_status: 'active',
+      db_connectivity: 'connected',
+      model_drift_percent: 0,
+      memory_usage_mb: 180,
+      uptime_hours: 24,
+      cache_health: 'warm',
+      transport_status: 'polling',
+      heartbeat_at: new Date().toISOString(),
+      selected_zone_observed_kw: 580,
+      scenario: 'normal',
+    },
   };
+  void mockData;
 
   useEffect(() => {
     const fetchData = async () => {
@@ -115,8 +152,6 @@ export default function OperatorDashboard() {
       } catch (err) {
         console.error('Failed to fetch dashboard data:', err);
         setError('Failed to load dashboard data');
-        // Fallback to mock data if API fails
-        setData(mockData);
       } finally {
         setLoading(false);
       }
@@ -127,8 +162,6 @@ export default function OperatorDashboard() {
 
   useEffect(() => {
     if (!token) return;
-    if (!data) return;
-    if (workspace !== 'overview') return;
 
     const interval = setInterval(async () => {
       try {
@@ -143,7 +176,37 @@ export default function OperatorDashboard() {
     }, 30000); // Poll every 30 seconds
 
     return () => clearInterval(interval);
-  }, [token, data, workspace, selectedZone, scenario]);
+  }, [token, selectedZone, scenario]);
+
+  useEffect(() => {
+    if (!data?.zone) return;
+    setViewState((current) => ({
+      ...current,
+      longitude: data.zone.lng,
+      latitude: data.zone.lat,
+      zoom: workspace === 'operations' ? 11.8 : current.zoom,
+    }));
+  }, [data?.zone?.id, workspace]);
+
+  useEffect(() => {
+    const resizeMaps = () => {
+      window.requestAnimationFrame(() => {
+        overviewMapRef.current?.resize();
+        operationsMapRef.current?.resize();
+      });
+    };
+
+    resizeMaps();
+    const timeoutId = window.setTimeout(resizeMaps, 240);
+    window.addEventListener('resize', resizeMaps);
+    document.addEventListener('fullscreenchange', resizeMaps);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+      window.removeEventListener('resize', resizeMaps);
+      document.removeEventListener('fullscreenchange', resizeMaps);
+    };
+  }, [workspace, data?.zone?.id, data?.all_zones?.length]);
 
   const peakDelta = useMemo(() => {
     if (!data) return 0;
@@ -183,6 +246,88 @@ export default function OperatorDashboard() {
     ] as const;
   }, []);
 
+  const filteredAlerts = useMemo(() => {
+    if (!data) return [];
+    return combinedTicker.filter((event) => alertSeverityFilter === 'ALL' || event.severity === alertSeverityFilter);
+  }, [combinedTicker, alertSeverityFilter, data]);
+
+  const stationsView = useMemo(() => {
+    const stations = [...(data?.stations || [])];
+    const filtered = stations.filter((station) =>
+      `${station.name} ${station.operator} ${station.zone_name}`.toLowerCase().includes(stationSearch.toLowerCase().trim()),
+    );
+    filtered.sort((a, b) => {
+      if (stationSort === 'wait') return b.wait_time - a.wait_time;
+      if (stationSort === 'health') return a.health_score - b.health_score;
+      return b.utilization_percent - a.utilization_percent;
+    });
+    return filtered;
+  }, [data?.stations, stationSearch, stationSort]);
+
+  const workflowTimeline = data?.workflow?.recent_events || [];
+
+  const runWorkflowAction = async (actionTitle: string, action: 'ack' | 'in-progress' | 'escalated' | 'resolved') => {
+    if (!token) return;
+    setWorkflowBusy(`${actionTitle}:${action}`);
+    try {
+      if (action === 'ack') {
+        await dashboardAPI.acknowledgeAction(token, actionTitle);
+      } else {
+        await dashboardAPI.updateActionStatus(token, actionTitle, action, '');
+      }
+      const next = await dashboardAPI.getOperatorDashboard(token, selectedZone, scenario);
+      setData(next);
+      setLastUpdatedAt(new Date().toISOString());
+      setError(null);
+    } catch (workflowError) {
+      setError(workflowError instanceof Error ? workflowError.message : 'Workflow action failed');
+    } finally {
+      setWorkflowBusy(null);
+    }
+  };
+
+  const exportIncidentCsv = () => {
+    downloadCsv(
+      'gridsense-incidents.csv',
+      (data?.incidents || []).map((incident) => ({
+        id: incident.id,
+        title: incident.title,
+        zone: incident.zone,
+        severity: incident.severity,
+        status: incident.status,
+        reason: incident.reason,
+        impact: incident.impact,
+      })),
+    );
+  };
+
+  const exportForecastPdf = () => {
+    if (!data) return;
+    const doc = new jsPDF();
+    doc.setFontSize(16);
+    doc.text('GridSense Forecast Summary', 14, 18);
+    doc.setFontSize(11);
+    doc.text(`Zone: ${data.zone.name}`, 14, 30);
+    doc.text(`Scenario: ${data.scenario}`, 14, 38);
+    doc.text(`Predicted load: ${Math.round(data.grid_stress.predicted_load)} kW`, 14, 46);
+    doc.text(`Capacity: ${Math.round(data.grid_stress.capacity)} kW`, 14, 54);
+    doc.text(`Peak window: ${data.network_summary.peak_window}`, 14, 62);
+    doc.text(`Reason: ${data.grid_stress.explanation.reason}`, 14, 72, { maxWidth: 180 });
+    doc.text(`Impact: ${data.grid_stress.explanation.impact}`, 14, 90, { maxWidth: 180 });
+    doc.save('gridsense-forecast-summary.pdf');
+  };
+
+  const toggleFullscreen = async () => {
+    if (!mapShellRef.current) return;
+    if (document.fullscreenElement) {
+      await document.exitFullscreen();
+      window.requestAnimationFrame(() => operationsMapRef.current?.resize());
+      return;
+    }
+    await mapShellRef.current.requestFullscreen();
+    window.requestAnimationFrame(() => operationsMapRef.current?.resize());
+  };
+
   if (loading && !data) {
     return <div className="min-h-screen bg-[#0B0F14] text-slate-200 flex items-center justify-center">Loading operator cockpit...</div>;
   }
@@ -211,7 +356,7 @@ export default function OperatorDashboard() {
       />
 
       <header className="sticky top-0 z-40 border-b border-white/8 bg-[#0B0F14]/80 backdrop-blur-xl">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
+        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 px-4 py-4 sm:px-6">
           <Link to="/" className="flex items-center gap-3">
               <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-emerald-400/30 bg-emerald-400/10 text-emerald-300">
                 <Network size={18} />
@@ -221,7 +366,7 @@ export default function OperatorDashboard() {
                 <h1 className="text-xl font-semibold text-white">Grid Control and Planning Console</h1>
               </div>
             </Link>
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center justify-end gap-2 sm:gap-3">
             {isBackendLive
               ? <span className="rounded-full border border-emerald-400/30 bg-emerald-400/10 px-3 py-1 text-[10px] uppercase tracking-[0.22em] text-emerald-300">● Live</span>
               : <span className="rounded-full border border-amber-400/30 bg-amber-400/10 px-3 py-1 text-[10px] uppercase tracking-[0.22em] text-amber-300">◎ Simulation</span>
@@ -237,11 +382,11 @@ export default function OperatorDashboard() {
       </header>
 
       <div className="w-full border-b border-white/8 bg-white/[0.02]">
-        <div className="mx-auto flex max-w-7xl gap-1 px-6 py-2 overflow-x-auto">
+        <div className="mx-auto flex max-w-7xl gap-1 overflow-x-auto px-4 py-2 sm:px-6">
           {WORKSPACES.map((ws) => {
             const isActive = workspace === ws.id;
             return (
-              <button key={ws.id} onClick={() => setWorkspace(ws.id)} className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs whitespace-nowrap transition ${isActive ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}>
+              <button key={ws.id} type="button" onClick={() => setWorkspace(ws.id)} className={`flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs whitespace-nowrap transition ${isActive ? 'border border-cyan-500/30 bg-cyan-500/20 text-cyan-300' : 'text-slate-400 hover:bg-white/5 hover:text-white'}`}>
                 {ws.label}
               </button>
             );
@@ -249,7 +394,7 @@ export default function OperatorDashboard() {
         </div>
       </div>
 
-      <main className="relative z-10 mx-auto flex max-w-[1380px] flex-col gap-5 px-6 py-5">
+      <main className="relative z-10 mx-auto flex max-w-[1380px] flex-col gap-5 px-4 py-5 sm:px-6">
         {workspace === 'forecast' && forecastCenter && horizonPayload && (
           <section className="rounded-[28px] border border-white/10 bg-white/5 p-6 shadow-2xl shadow-black/20 backdrop-blur-xl">
             <div className="flex flex-wrap items-start justify-between gap-4">
@@ -509,7 +654,7 @@ export default function OperatorDashboard() {
                   <p className="mt-1 text-2xl font-semibold text-white">{Math.round(data.grid_stress.capacity)} kW</p>
                 </div>
               </div>
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid gap-4 sm:grid-cols-3">
                 <div className="rounded-2xl border border-white/8 bg-[#0E141C] p-4">
                   <p className="text-sm text-slate-400">Status</p>
                   <p className={`mt-1 text-lg font-semibold ${data.grid_stress.status === 'OVERLOAD RISK' ? 'text-rose-300' : data.grid_stress.status === 'CONSTRAINED' ? 'text-amber-300' : 'text-emerald-300'}`}>{data.grid_stress.status}</p>
@@ -546,7 +691,7 @@ export default function OperatorDashboard() {
                 </div>
               </div>
 
-              <div className="mt-5 grid grid-cols-2 gap-4">
+              <div className="mt-5 grid gap-4 sm:grid-cols-2">
                 <div className="rounded-2xl border border-white/8 bg-[#0D131A] p-4">
                   <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Overload probability</p>
                   <p className={`mt-2 text-2xl font-semibold ${riskTone.text}`}>{Math.round(data.risk_engine.overload_probability * 100)}%</p>
@@ -561,7 +706,7 @@ export default function OperatorDashboard() {
                 </div>
               </div>
 
-              <div className="mt-4 grid grid-cols-3 gap-4">
+              <div className="mt-4 grid gap-4 sm:grid-cols-3">
                 <div className="rounded-2xl border border-white/8 bg-[#0D131A] p-4">
                   <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Projected peak</p>
                   <p className="mt-2 text-lg font-semibold text-white">{data.risk_engine.projected_peak_timing}</p>
@@ -758,6 +903,7 @@ export default function OperatorDashboard() {
             </div>
             <div className="mt-4 h-[260px] overflow-hidden rounded-[22px] border border-white/8">
               <Map
+                ref={overviewMapRef}
                 {...viewState}
                 onMove={(event) => setViewState(event.viewState)}
                 mapStyle={MAP_STYLE}
@@ -785,7 +931,7 @@ export default function OperatorDashboard() {
         <section className="grid gap-5 lg:grid-cols-[0.92fr_1.08fr]">
           <div className="rounded-[28px] border border-white/10 bg-white/5 p-6 backdrop-blur-xl">
             <p className="text-xs uppercase tracking-[0.28em] text-slate-400">Zone Command Board</p>
-            <div className="mt-4 grid grid-cols-2 gap-4">
+            <div className="mt-4 grid gap-4 sm:grid-cols-2">
               <div className="rounded-2xl border border-white/8 bg-[#0D131A] p-4">
                 <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Scenario Delta</p>
                  <p className={`mt-2 text-lg font-semibold ${(data.network_summary?.scenario_delta_kw ?? 0) > 0 ? 'text-rose-300' : 'text-emerald-300'}`}>
@@ -936,10 +1082,80 @@ export default function OperatorDashboard() {
                 <div className="rounded-full border border-emerald-400/30 bg-emerald-400/10 px-3 py-1 text-xs uppercase tracking-[0.18em] text-emerald-300">Live</div>
               </div>
               <div className="grid gap-4 lg:grid-cols-[2fr_1fr]">
-                <div className="rounded-2xl border border-white/8 bg-[#0D131A] p-5">
-                  <p className="text-xs uppercase tracking-[0.28em] text-slate-500 mb-4">Zone Status Map</p>
-                  <div className="h-[400px] bg-slate-900/50 rounded-xl border border-white/10 flex items-center justify-center">
-                    <div>Map disabled for debugging</div>
+                <div ref={mapShellRef} className="rounded-2xl border border-white/8 bg-[#0D131A] p-5">
+                  <div className="mb-4 flex items-center justify-between">
+                    <p className="text-xs uppercase tracking-[0.28em] text-slate-500">Zone Status Map</p>
+                    <button onClick={() => void toggleFullscreen()} className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-slate-300">
+                      <Expand size={12} />
+                      Fullscreen
+                    </button>
+                  </div>
+                  <div className="h-[460px] overflow-hidden rounded-xl border border-white/10">
+                    <Map
+                      ref={operationsMapRef}
+                      {...viewState}
+                      onMove={(event) => setViewState(event.viewState)}
+                      mapStyle={MAP_STYLE}
+                      attributionControl={false}
+                      style={{ width: '100%', height: '100%' }}
+                    >
+                      <NavigationControl position="bottom-right" />
+                      {data.spatial.congestion_corridors.length > 0 && (
+                        <Source
+                          id="corridors"
+                          type="geojson"
+                          data={{
+                            type: 'FeatureCollection',
+                            features: data.spatial.congestion_corridors.map((corridor) => {
+                              const fromZone = data.all_zones.find((zone) => zone.id === corridor.from_zone_id);
+                              const toZone = data.all_zones.find((zone) => zone.id === corridor.to_zone_id);
+                              return {
+                                type: 'Feature',
+                                properties: { severity: corridor.severity },
+                                geometry: {
+                                  type: 'LineString',
+                                  coordinates: [
+                                    [fromZone?.lng || 0, fromZone?.lat || 0],
+                                    [toZone?.lng || 0, toZone?.lat || 0],
+                                  ],
+                                },
+                              };
+                            }),
+                          }}
+                        >
+                          <Layer
+                            id="corridor-lines"
+                            type="line"
+                            paint={{
+                              'line-color': ['match', ['get', 'severity'], 'CRITICAL', '#fb7185', '#f59e0b'],
+                              'line-width': 3.5,
+                              'line-opacity': 0.7,
+                            }}
+                          />
+                        </Source>
+                      )}
+                      {data.all_zones.map((zone) => {
+                        const hotspot = data.spatial.heatmap_points.find((point) => point.id === zone.id);
+                        const overload = data.spatial.overload_zones.find((item) => item.id === zone.id);
+                        const color =
+                          overload?.status === 'OVERLOAD RISK' ? '#fb7185' : overload?.status === 'CONSTRAINED' ? '#f59e0b' : zone.active ? '#34d399' : '#38bdf8';
+                        return (
+                          <Marker key={`ops-zone-${zone.id}`} longitude={zone.lng} latitude={zone.lat} anchor="center">
+                            <button
+                              onClick={() => setSelectedZone(zone.name)}
+                              className="rounded-full border-2 border-white shadow-lg"
+                              style={{
+                                width: zone.active ? 20 : 16,
+                                height: zone.active ? 20 : 16,
+                                backgroundColor: color,
+                                boxShadow: hotspot ? `0 0 0 ${Math.max(8, hotspot.utilization_percent / 6)}px rgba(56,189,248,0.12)` : undefined,
+                              }}
+                              aria-label={`Focus ${zone.name}`}
+                            />
+                          </Marker>
+                        );
+                      })}
+                    </Map>
                   </div>
                 </div>
                 <div className="space-y-4">
@@ -952,6 +1168,11 @@ export default function OperatorDashboard() {
                     <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Network Load</p>
                     <p className="mt-3 text-2xl font-semibold text-white">{Math.round(data.grid_stress.predicted_load)} kW</p>
                     <p className="mt-2 text-xs text-slate-400">of {Math.round(data.grid_stress.capacity)} kW capacity</p>
+                  </div>
+                  <div className="rounded-2xl border border-white/8 bg-[#0D131A] p-4">
+                    <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Congestion Corridors</p>
+                    <p className="mt-3 text-2xl font-semibold text-white">{data.spatial.congestion_corridors.length}</p>
+                    <p className="mt-2 text-xs text-slate-400">Corridors requiring reroute awareness</p>
                   </div>
                 </div>
               </div>
@@ -980,22 +1201,86 @@ export default function OperatorDashboard() {
 
         {workspace === 'incidents' && (
           <section className="space-y-5">
-            <div className="rounded-[28px] border border-white/10 bg-white/5 p-6 backdrop-blur-xl">
-              <p className="text-xs uppercase tracking-[0.3em] text-slate-400">Incident Management</p>
-              <h2 className="mt-2 text-2xl font-semibold text-white">Critical events</h2>
-              <div className="mt-6 space-y-3">
-                {(data.event_ticker || []).slice(0, 10).map((event, idx) => (
-                  <div key={idx} className="rounded-2xl border border-white/8 bg-[#0D131A] p-4 flex items-start gap-4">
-                    <span className={`mt-0.5 inline-flex h-3 w-3 rounded-full flex-shrink-0 ${event.severity === 'CRITICAL' ? 'bg-rose-400' : event.severity === 'HIGH' ? 'bg-amber-400' : event.severity === 'MEDIUM' ? 'bg-yellow-400' : 'bg-emerald-400'}`} />
-                    <div className="flex-1">
-                      <div className="flex items-center justify-between gap-2 mb-1">
-                        <p className="font-medium text-white text-sm">{event.type}</p>
+            <div className="grid gap-5 xl:grid-cols-[1.15fr_0.85fr]">
+              <div className="rounded-[28px] border border-white/10 bg-white/5 p-6 backdrop-blur-xl">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.3em] text-slate-400">Incident Management</p>
+                    <h2 className="mt-2 text-2xl font-semibold text-white">Actionable incident queue</h2>
+                  </div>
+                  <button onClick={exportIncidentCsv} className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-300">
+                    <Download size={14} />
+                    Incident CSV
+                  </button>
+                </div>
+                <div className="mt-6 space-y-4">
+                  {data.action_queue.map((action) => (
+                    <div key={action.title} className="rounded-3xl border border-white/8 bg-[#0D131A] p-5">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                          <p className="text-lg font-semibold text-white">{action.title}</p>
+                          <p className="mt-2 text-sm text-slate-400">{action.reason}</p>
+                        </div>
+                        <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] uppercase tracking-[0.18em] text-slate-300">
+                          {action.workflow_status || 'pending'}
+                        </span>
+                      </div>
+                      <p className="mt-3 text-sm text-slate-300">{action.impact}</p>
+                      <div className="mt-4 flex flex-wrap gap-2">
+                        <button
+                          onClick={() => void runWorkflowAction(action.title, 'ack')}
+                          disabled={workflowBusy === `${action.title}:ack`}
+                          className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-slate-200"
+                        >
+                          Acknowledge
+                        </button>
+                        <button
+                          onClick={() => void runWorkflowAction(action.title, 'in-progress')}
+                          disabled={workflowBusy === `${action.title}:in-progress`}
+                          className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-slate-200"
+                        >
+                          Start mitigation
+                        </button>
+                        <button
+                          onClick={() => void runWorkflowAction(action.title, 'escalated')}
+                          disabled={workflowBusy === `${action.title}:escalated`}
+                          className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-slate-200"
+                        >
+                          Escalate
+                        </button>
+                        <button
+                          onClick={() => void runWorkflowAction(action.title, 'resolved')}
+                          disabled={workflowBusy === `${action.title}:resolved`}
+                          className="rounded-xl border border-emerald-400/20 bg-emerald-400/10 px-3 py-2 text-xs text-emerald-200"
+                        >
+                          Resolve
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="rounded-[28px] border border-white/10 bg-white/5 p-6 backdrop-blur-xl">
+                <p className="text-xs uppercase tracking-[0.3em] text-slate-400">Incident Timeline</p>
+                <h2 className="mt-2 text-2xl font-semibold text-white">Workflow history</h2>
+                <div className="mt-6 space-y-3">
+                  {workflowTimeline.length === 0 && (
+                    <div className="rounded-2xl border border-white/8 bg-[#0D131A] p-4 text-sm text-slate-400">
+                      No workflow actions yet. Acknowledge or resolve an incident to create an auditable timeline.
+                    </div>
+                  )}
+                  {workflowTimeline.map((event) => (
+                    <div key={event.id} className="rounded-2xl border border-white/8 bg-[#0D131A] p-4">
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="font-medium text-white">{event.action_title}</p>
                         <span className="text-xs text-slate-500">{new Date(event.timestamp).toLocaleTimeString()}</span>
                       </div>
-                      <p className="text-sm text-slate-300">{event.message}</p>
+                      <p className="mt-2 text-sm text-slate-300">{event.details}</p>
+                      <p className="mt-2 text-xs text-slate-500">{event.operator}</p>
                     </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
             </div>
           </section>
@@ -1041,22 +1326,59 @@ export default function OperatorDashboard() {
           <section className="space-y-5">
             <div className="rounded-[28px] border border-white/10 bg-white/5 p-6 backdrop-blur-xl">
               <p className="text-xs uppercase tracking-[0.3em] text-slate-400">Reports</p>
-              <h2 className="mt-2 text-2xl font-semibold text-white">Analytics & reports</h2>
-              <div className="mt-6 space-y-3">
-                {[
-                  { title: 'Daily Operations Summary', date: 'Today', size: '2.4 MB' },
-                  { title: 'Weekly Peak Analysis', date: '7 days', size: '1.8 MB' },
-                  { title: 'Monthly Infrastructure Report', date: '30 days', size: '3.2 MB' },
-                  { title: 'Forecast Accuracy Report', date: 'Last 90 days', size: '1.5 MB' },
-                ].map((report, idx) => (
-                  <div key={idx} className="rounded-2xl border border-white/8 bg-[#0D131A] p-4 flex items-center justify-between hover:bg-white/5 transition cursor-pointer">
-                    <div>
-                      <p className="font-medium text-white">{report.title}</p>
-                      <p className="mt-1 text-xs text-slate-500">{report.date} • {report.size}</p>
-                    </div>
-                    <ArrowRight size={16} className="text-slate-500" />
-                  </div>
-                ))}
+              <h2 className="mt-2 text-2xl font-semibold text-white">Operational exports</h2>
+              <div className="mt-6 grid gap-4 md:grid-cols-2">
+                <button
+                  onClick={() => exportForecastPdf()}
+                  className="rounded-2xl border border-white/8 bg-[#0D131A] p-5 text-left"
+                >
+                  <p className="font-medium text-white">Forecast summary PDF</p>
+                  <p className="mt-2 text-sm text-slate-400">Zone forecast, load, capacity, peak window, and explainability.</p>
+                </button>
+                <button
+                  onClick={() =>
+                    downloadCsv(
+                      'gridsense-zone-ranking.csv',
+                      data.zone_rankings.map((zone) => ({
+                        zone: zone.name,
+                        predicted_load_kw: zone.predicted_load,
+                        capacity_kw: zone.capacity,
+                        utilization_percent: zone.utilization_percent,
+                        status: zone.status,
+                      })),
+                    )
+                  }
+                  className="rounded-2xl border border-white/8 bg-[#0D131A] p-5 text-left"
+                >
+                  <p className="font-medium text-white">Zone ranking CSV</p>
+                  <p className="mt-2 text-sm text-slate-400">Utilization, headroom, and risk status for the live scenario.</p>
+                </button>
+                <button
+                  onClick={() => exportIncidentCsv()}
+                  className="rounded-2xl border border-white/8 bg-[#0D131A] p-5 text-left"
+                >
+                  <p className="font-medium text-white">Incident log CSV</p>
+                  <p className="mt-2 text-sm text-slate-400">Workflow-ready incident export with status and impact fields.</p>
+                </button>
+                <button
+                  onClick={() =>
+                    downloadCsv(
+                      'gridsense-stations.csv',
+                      (data.stations || []).map((station) => ({
+                        station: station.name,
+                        zone: station.zone_name,
+                        utilization_percent: station.utilization_percent,
+                        queue_trend: station.queue_trend,
+                        health_score: station.health_score,
+                        downtime_probability: station.downtime_probability,
+                      })),
+                    )
+                  }
+                  className="rounded-2xl border border-white/8 bg-[#0D131A] p-5 text-left"
+                >
+                  <p className="font-medium text-white">Station operations CSV</p>
+                  <p className="mt-2 text-sm text-slate-400">Utilization, queue trend, health score, and downtime probability.</p>
+                </button>
               </div>
             </div>
           </section>
@@ -1065,10 +1387,29 @@ export default function OperatorDashboard() {
         {workspace === 'alerts' && (
           <section className="space-y-5">
             <div className="rounded-[28px] border border-white/10 bg-white/5 p-6 backdrop-blur-xl">
-              <p className="text-xs uppercase tracking-[0.3em] text-slate-400">Alerts</p>
-              <h2 className="mt-2 text-2xl font-semibold text-white">System alerts</h2>
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.3em] text-slate-400">Alerts</p>
+                  <h2 className="mt-2 text-2xl font-semibold text-white">System alerts</h2>
+                </div>
+                <div className="flex gap-2">
+                  {(['ALL', 'CRITICAL', 'HIGH', 'MEDIUM', 'LOW', 'INFO'] as const).map((severity) => (
+                    <button
+                      key={severity}
+                      onClick={() => setAlertSeverityFilter(severity)}
+                      className={`rounded-full border px-3 py-1.5 text-[11px] transition ${
+                        alertSeverityFilter === severity
+                          ? 'border-cyan-300/30 bg-cyan-300/10 text-white'
+                          : 'border-white/10 bg-white/5 text-slate-400'
+                      }`}
+                    >
+                      {severity}
+                    </button>
+                  ))}
+                </div>
+              </div>
               <div className="mt-6 space-y-3">
-                {(data.event_ticker || []).slice(0, 8).map((event, idx) => (
+                {filteredAlerts.map((event, idx) => (
                   <div key={idx} className={`rounded-2xl border p-4 ${event.severity === 'CRITICAL' ? 'border-rose-400/20 bg-rose-400/5' : event.severity === 'HIGH' ? 'border-amber-400/20 bg-amber-400/5' : 'border-white/8 bg-[#0D131A]'}`}>
                     <div className="flex items-start gap-3">
                       <AlertTriangle size={16} className={`mt-1 flex-shrink-0 ${event.severity === 'CRITICAL' ? 'text-rose-400' : event.severity === 'HIGH' ? 'text-amber-400' : 'text-slate-400'}`} />
@@ -1089,26 +1430,55 @@ export default function OperatorDashboard() {
           <section className="space-y-5">
             <div className="rounded-[28px] border border-white/10 bg-white/5 p-6 backdrop-blur-xl">
               <p className="text-xs uppercase tracking-[0.3em] text-slate-400">Station Directory</p>
-              <h2 className="mt-2 text-2xl font-semibold text-white">All zones and stations</h2>
+              <h2 className="mt-2 text-2xl font-semibold text-white">Operational station state</h2>
+              <div className="mt-6 flex flex-wrap gap-3">
+                <label className="relative min-w-[240px] flex-1">
+                  <Search size={14} className="absolute left-3 top-3.5 text-slate-500" />
+                  <input
+                    value={stationSearch}
+                    onChange={(event) => setStationSearch(event.target.value)}
+                    placeholder="Search station or zone"
+                    className="w-full rounded-2xl border border-white/8 bg-[#0D131A] px-10 py-3 text-sm text-white outline-none"
+                  />
+                </label>
+                <select
+                  value={stationSort}
+                  onChange={(event) => setStationSort(event.target.value as typeof stationSort)}
+                  className="rounded-2xl border border-white/8 bg-[#0D131A] px-4 py-3 text-sm text-white outline-none"
+                >
+                  <option value="utilization">Sort by utilization</option>
+                  <option value="wait">Sort by queue</option>
+                  <option value="health">Sort by health</option>
+                </select>
+              </div>
               <div className="mt-6 overflow-hidden rounded-2xl border border-white/8">
                 <table className="w-full divide-y divide-white/8 text-sm">
                   <thead className="bg-white/5 text-slate-400">
                     <tr>
-                      <th className="px-4 py-3 text-left font-medium">Zone</th>
-                      <th className="px-4 py-3 text-left font-medium">Type</th>
-                      <th className="px-4 py-3 text-left font-medium">Capacity</th>
+                      <th className="px-4 py-3 text-left font-medium">Station</th>
+                      <th className="px-4 py-3 text-left font-medium">Utilization</th>
+                      <th className="px-4 py-3 text-left font-medium">Queue Trend</th>
+                      <th className="px-4 py-3 text-left font-medium">Health</th>
+                      <th className="px-4 py-3 text-left font-medium">Active Sessions</th>
                       <th className="px-4 py-3 text-left font-medium">Status</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-white/8 bg-[#0D131A]">
-                    {data.all_zones.map((zone) => (
-                      <tr key={zone.id} className={zone.active ? 'bg-emerald-400/5' : ''}>
-                        <td className="px-4 py-3 text-white font-medium">{zone.name}</td>
-                        <td className="px-4 py-3 text-slate-300 capitalize">{zone.zone_type}</td>
-                        <td className="px-4 py-3 text-slate-300">{Math.round(zone.capacity)} kW</td>
+                    {stationsView.map((station) => (
+                      <tr key={station.id}>
+                        <td className="px-4 py-3 text-white font-medium">
+                          <button onClick={() => { setSelectedZone(station.zone_name); setWorkspace('operations'); }} className="text-left hover:text-cyan-200">
+                            {station.name}
+                          </button>
+                          <p className="mt-1 text-xs text-slate-500">{station.zone_name} • {station.operator}</p>
+                        </td>
+                        <td className="px-4 py-3 text-slate-300">{station.utilization_percent.toFixed(1)}%</td>
+                        <td className="px-4 py-3 text-slate-300">{station.queue_trend}</td>
+                        <td className="px-4 py-3 text-slate-300">{station.health_score}</td>
+                        <td className="px-4 py-3 text-slate-300">{station.active_sessions}</td>
                         <td className="px-4 py-3">
-                          <span className={`inline-flex rounded-full px-2 py-1 text-xs font-medium ${zone.active ? 'bg-emerald-400/20 text-emerald-300' : 'bg-slate-500/20 text-slate-400'}`}>
-                            {zone.active ? 'Active' : 'Inactive'}
+                          <span className={`inline-flex rounded-full px-2 py-1 text-xs font-medium ${station.status === 'RED' ? 'bg-rose-400/20 text-rose-200' : station.status === 'YELLOW' ? 'bg-amber-400/20 text-amber-200' : 'bg-emerald-400/20 text-emerald-200'}`}>
+                            {station.status}
                           </span>
                         </td>
                       </tr>
@@ -1128,33 +1498,33 @@ export default function OperatorDashboard() {
               <div className="mt-6 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                 <div className="rounded-2xl border border-white/8 bg-[#0D131A] p-4">
                   <p className="text-xs uppercase tracking-[0.18em] text-slate-500">API Status</p>
-                  <p className="mt-3 text-lg font-semibold text-emerald-300">Operational</p>
-                  <p className="mt-2 text-xs text-slate-400">All endpoints responding</p>
+                  <p className="mt-3 text-lg font-semibold text-emerald-300 capitalize">{data.system_health.api_health}</p>
+                  <p className="mt-2 text-xs text-slate-400">{data.system_health.backend_latency_ms} ms backend latency</p>
                 </div>
                 <div className="rounded-2xl border border-white/8 bg-[#0D131A] p-4">
                   <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Model Status</p>
-                  <p className="mt-3 text-lg font-semibold text-emerald-300">Active</p>
-                  <p className="mt-2 text-xs text-slate-400">XGBoost v1.4.2</p>
+                  <p className="mt-3 text-lg font-semibold text-emerald-300 capitalize">{data.system_health.forecast_engine_status}</p>
+                  <p className="mt-2 text-xs text-slate-400">Drift {data.system_health.model_drift_percent.toFixed(1)}%</p>
                 </div>
                 <div className="rounded-2xl border border-white/8 bg-[#0D131A] p-4">
                   <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Data Freshness</p>
-                  <p className="mt-3 text-lg font-semibold text-emerald-300">{lastUpdatedAt ? new Date(lastUpdatedAt).toLocaleTimeString() : 'Live'}</p>
-                  <p className="mt-2 text-xs text-slate-400">Last updated now</p>
+                  <p className="mt-3 text-lg font-semibold text-emerald-300">{new Date(data.system_health.heartbeat_at).toLocaleTimeString()}</p>
+                  <p className="mt-2 text-xs text-slate-400">Polling {data.system_health.polling_health}</p>
                 </div>
                 <div className="rounded-2xl border border-white/8 bg-[#0D131A] p-4">
-                  <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Prediction Accuracy</p>
-                  <p className="mt-3 text-lg font-semibold text-cyan-300">92.4%</p>
-                  <p className="mt-2 text-xs text-slate-400">Last 30 days MAPE</p>
+                  <p className="text-xs uppercase tracking-[0.18em] text-slate-500">DB Connectivity</p>
+                  <p className="mt-3 text-lg font-semibold text-cyan-300 capitalize">{data.system_health.db_connectivity}</p>
+                  <p className="mt-2 text-xs text-slate-400">{data.system_health.cache_health} cache</p>
                 </div>
                 <div className="rounded-2xl border border-white/8 bg-[#0D131A] p-4">
-                  <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Network Zones</p>
-                  <p className="mt-3 text-lg font-semibold text-white">{data.network_summary.total_zones}</p>
-                  <p className="mt-2 text-xs text-slate-400">Total monitored</p>
+                  <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Memory Usage</p>
+                  <p className="mt-3 text-lg font-semibold text-white">{data.system_health.memory_usage_mb} MB</p>
+                  <p className="mt-2 text-xs text-slate-400">Transport: {data.system_health.transport_status}</p>
                 </div>
                 <div className="rounded-2xl border border-white/8 bg-[#0D131A] p-4">
                   <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Uptime</p>
-                  <p className="mt-3 text-lg font-semibold text-emerald-300">99.98%</p>
-                  <p className="mt-2 text-xs text-slate-400">Last 90 days</p>
+                  <p className="mt-3 text-lg font-semibold text-emerald-300">{data.system_health.uptime_hours} h</p>
+                  <p className="mt-2 text-xs text-slate-400">Scenario {data.system_health.scenario}</p>
                 </div>
               </div>
             </div>

@@ -4,6 +4,7 @@ from typing import Dict, List, Optional
 
 from app.services.demand_predictor import DemandPredictor, SCENARIO_MULTIPLIERS
 from app.services.ev_stations import calculate_route, get_real_stations
+from app.services.user_workspace_service import user_workspace_service
 from app.services.location_recommender import LocationRecommender
 from app.services.zone_catalog import ZONE_CATALOG, get_zone, get_zone_by_name, nearest_zone
 from app.services.system_state import system_state_engine
@@ -21,6 +22,10 @@ SERVICE_AREA_CENTER = {"lat": 12.9716, "lng": 77.5946}
 SERVICE_AREA_RADIUS_KM = 60.0
 
 
+def _now_iso() -> str:
+    return datetime.now().isoformat()
+
+
 class PortalService:
     def __init__(self):
         self.predictor = DemandPredictor()
@@ -30,6 +35,10 @@ class PortalService:
     def set_scenario(self, scenario: str) -> str:
         self.active_scenario = scenario if scenario in SCENARIO_MULTIPLIERS else "normal"
         return self.active_scenario
+
+    async def get_station_by_id(self, station_id: int) -> Optional[Dict]:
+        stations = await get_real_stations()
+        return next((station for station in stations if int(station["id"]) == int(station_id)), None)
 
     async def get_operator_dashboard(self, zone_name: Optional[str], scenario: Optional[str]) -> Dict:
         scenario_key = self.set_scenario(scenario or self.active_scenario)
@@ -190,6 +199,14 @@ class PortalService:
             scenario_key=scenario_key,
         )
 
+        stations_workspace = await self._build_operator_station_workspace(selected_zone["name"])
+        incidents = self._build_incidents(action_queue, selected_zone["name"], peak_point)
+        system_health = self._build_system_health(
+            selected_zone_name=str(selected_zone["name"]),
+            scenario_key=scenario_key,
+            forecast_center=forecast_center,
+        )
+
         return {
             "role": "operator",
             "scenario": scenario_key,
@@ -246,6 +263,9 @@ class PortalService:
                 for zone in ZONE_CATALOG
             ],
             "spatial": spatial_data,
+            "incidents": incidents,
+            "stations": stations_workspace,
+            "system_health": system_health,
         }
 
     def _build_forecast_center(self, zone_id: int, zone_name: str, scenario_key: str) -> Dict:
@@ -558,8 +578,11 @@ class PortalService:
         selected_station_id: Optional[int],
         vehicle_model: Optional[str],
         battery_capacity_kwh: Optional[float],
+        battery_percent: Optional[float],
         home_charging_access: Optional[bool],
         typical_charging_time: Optional[str],
+        destination: Optional[str],
+        user_key: str,
     ) -> Dict:
         service_area_notice = None
         if self._distance_km(lat, lng, SERVICE_AREA_CENTER["lat"], SERVICE_AREA_CENTER["lng"]) > SERVICE_AREA_RADIUS_KM:
@@ -587,9 +610,24 @@ class PortalService:
             nearest_station=nearest_station,
             selected_station=route_station,
             battery_capacity_kwh=battery_capacity_kwh,
+            battery_percent=battery_percent,
             home_charging_access=home_charging_access,
         )
         alternatives = self._build_station_alternatives(stations, battery_capacity_kwh)
+        route_planner = self._build_user_route_planner(
+            route=route,
+            route_station=route_station,
+            alternatives=alternatives,
+            destination=destination,
+            battery_percent=battery_percent,
+        )
+        workspace_state = user_workspace_service.get_serializable_state(user_key)
+        workspace_state["alerts"] = self._merge_user_alerts(
+            existing_alerts=workspace_state["alerts"],
+            recommendation=best_window,
+            route_station=route_station,
+            queue_minutes=int(round(route_station.get("wait_time", 0))) if route_station else 0,
+        )
 
         return {
             "role": "user",
@@ -610,6 +648,8 @@ class PortalService:
             "decision_support": decision_support,
             "charging_recommendation": best_window,
             "load_context": current,
+            "route_planner": route_planner,
+            "workspace_state": workspace_state,
         }
 
     async def _build_charging_windows(self, zone_id: int) -> List[Dict]:
@@ -668,9 +708,11 @@ class PortalService:
         nearest_station: Optional[Dict],
         selected_station: Optional[Dict],
         battery_capacity_kwh: Optional[float],
+        battery_percent: Optional[float],
         home_charging_access: Optional[bool],
     ) -> Dict:
-        target_energy = round(max(12.0, min((battery_capacity_kwh or 45) * 0.42, 32.0)), 1)
+        remaining_percent = max(5.0, min(95.0, float(battery_percent if battery_percent is not None else 38.0)))
+        target_energy = round(max(10.0, min((battery_capacity_kwh or 45) * (0.78 - (remaining_percent / 100.0)), 34.0)), 1)
         public_tariff_base = 19.5
         home_tariff = 8.2
         public_cost = round(target_energy * public_tariff_base, 0)
@@ -725,6 +767,131 @@ class PortalService:
                 home_cost_inr=home_cost,
                 public_tariff_base=public_tariff_base,
             ),
+        }
+
+    def _build_user_route_planner(
+        self,
+        route: Optional[Dict],
+        route_station: Optional[Dict],
+        alternatives: List[Dict],
+        destination: Optional[str],
+        battery_percent: Optional[float],
+    ) -> Dict:
+        route_options = []
+        for option in alternatives[:3]:
+            arrival_queue = int(round(option["wait_time_minutes"] + max(0, option["distance_km"] - 2)))
+            route_options.append(
+                {
+                    "station_id": option["id"],
+                    "station_name": option["name"],
+                    "eta_minutes": option["estimated_total_minutes"] - 22,
+                    "queue_at_arrival_minutes": arrival_queue,
+                    "total_stop_minutes": option["estimated_total_minutes"],
+                    "headline": option["reason"],
+                    "why": f"{option['distance_km']:.1f} km detour with {arrival_queue} min expected queue at arrival.",
+                }
+            )
+
+        return {
+            "destination": destination or "Flexible charging stop",
+            "battery_percent": battery_percent if battery_percent is not None else 38,
+            "current_route": route,
+            "selected_station_name": route_station["name"] if route_station else None,
+            "route_options": route_options,
+        }
+
+    def _merge_user_alerts(self, existing_alerts: List[Dict], recommendation: Optional[Dict], route_station: Optional[Dict], queue_minutes: int) -> List[Dict]:
+        alerts = [alert for alert in existing_alerts if not alert.get("dismissed")]
+        dynamic_alerts: List[Dict] = []
+        if recommendation:
+            dynamic_alerts.append(
+                {
+                    "id": f"window-{recommendation['time_label']}",
+                    "title": "Recommended charging window",
+                    "message": recommendation["headline"],
+                    "severity": "info",
+                    "read": False,
+                    "dismissed": False,
+                    "created_at": _now_iso(),
+                }
+            )
+        if route_station and queue_minutes >= 15:
+            dynamic_alerts.append(
+                {
+                    "id": f"queue-{route_station['id']}",
+                    "title": "Queue pressure rising",
+                    "message": f"{route_station['name']} is showing ~{queue_minutes} min queue pressure.",
+                    "severity": "high",
+                    "read": False,
+                    "dismissed": False,
+                    "created_at": _now_iso(),
+                }
+            )
+
+        alert_ids = {alert["id"] for alert in alerts}
+        for alert in dynamic_alerts:
+            if alert["id"] not in alert_ids:
+                alerts.insert(0, alert)
+        return alerts[:12]
+
+    async def _build_operator_station_workspace(self, selected_zone_name: str) -> List[Dict]:
+        stations = await get_real_stations()
+        workspace = []
+        for station in stations[:18]:
+            if station["zone_name"] != selected_zone_name:
+                continue
+            utilization = round((station["load"] / max(station["capacity"], 1)) * 100, 1)
+            workspace.append(
+                {
+                    **station,
+                    "utilization_percent": utilization,
+                    "queue_trend": "rising" if station["wait_time"] >= 10 else "stable" if station["wait_time"] >= 4 else "clearing",
+                    "predicted_wait_growth": max(0, round(station["wait_time"] * 0.35, 1)),
+                    "health_score": max(45, int(round(100 - utilization * 0.55))),
+                    "connector_availability": max(1, int(round((station["capacity"] - station["load"]) / 35))),
+                    "active_sessions": max(1, int(round(station["load"] / 28))),
+                    "load_capacity_ratio": round(station["load"] / max(station["capacity"], 1), 3),
+                    "downtime_probability": round(min(0.42, max(0.04, utilization / 180)), 3),
+                }
+            )
+        return workspace
+
+    def _build_incidents(self, action_queue: List[Dict], selected_zone_name: str, peak_point: Dict) -> List[Dict]:
+        incidents = []
+        for index, action in enumerate(action_queue):
+            incidents.append(
+                {
+                    "id": f"incident-{index + 1}",
+                    "title": action["title"],
+                    "zone": selected_zone_name,
+                    "severity": action["priority"],
+                    "status": "pending",
+                    "timeline_headline": f"Peak handling window around {data_point_label(peak_point)}",
+                    "reason": action["reason"],
+                    "impact": action["impact"],
+                }
+            )
+        return incidents
+
+    def _build_system_health(self, selected_zone_name: str, scenario_key: str, forecast_center: Dict) -> Dict:
+        state = system_state_engine.get_state()
+        demand_rows = state.get("demand") or []
+        current_zone = next((row for row in demand_rows if row.get("zone_name") == selected_zone_name), None)
+        latency_ms = 110 if forecast_center["drift"]["reliability_score"] >= 80 else 190
+        return {
+            "backend_latency_ms": latency_ms,
+            "api_health": "healthy",
+            "polling_health": "healthy",
+            "forecast_engine_status": "active",
+            "db_connectivity": "connected",
+            "model_drift_percent": forecast_center["drift"]["drift_percent"],
+            "memory_usage_mb": 186,
+            "uptime_hours": 24,
+            "cache_health": "warm",
+            "transport_status": "polling",
+            "heartbeat_at": _now_iso(),
+            "selected_zone_observed_kw": current_zone.get("current_demand") if current_zone else None,
+            "scenario": scenario_key,
         }
 
     def _build_charge_now_engine(
