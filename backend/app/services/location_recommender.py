@@ -1,77 +1,66 @@
-from sqlalchemy.orm import Session
-from app.database import SessionLocal
-from app.models import Zone, ChargingStation, ChargingSession
-from app.services.demand_predictor import DemandPredictor
-from app.services.zone_catalog import ZONE_CATALOG
-from typing import List, Dict
+from __future__ import annotations
+
 from datetime import datetime
-import math
+from typing import Dict, List
+
+from app.services.demand_predictor import predict_demand
+from app.services.simulation_engine import generate_current_state, get_registered_stations
+from app.services.zone_catalog import nearest_zone
+
 
 class LocationRecommender:
     def recommend_new_stations(self) -> List[Dict]:
-        """Recommend zones for new charging stations"""
-        db = SessionLocal()
-        predictor = DemandPredictor()
-        try:
-            zones = db.query(Zone).all()
-            if not zones:
-                zones = [
-                    type("ZoneStub", (), {
-                        "id": zone["id"],
-                        "name": zone["name"],
-                        "lat_center": zone["lat"],
-                        "lng_center": zone["lng"],
-                    })()
-                    for zone in ZONE_CATALOG
-                ]
-            recommendations = []
+        """
+        Score real OSM station coordinates for expansion priority.
 
-            for zone in zones:
-                # Calculate demand density
-                sessions = db.query(ChargingSession).join(ChargingSession.station).filter(
-                    ChargingSession.station.has(zone_id=zone.id)
-                ).count()
+        The frontend currently expects the legacy recommendation fields, so the
+        payload keeps those fields and adds the coordinate metadata needed by the map.
+        """
+        stations = get_registered_stations()
+        if not stations:
+            return []
 
-                stations_count = db.query(ChargingStation).filter(ChargingStation.zone_id == zone.id).count()
-                if stations_count == 0:
-                    stations_count = 1
+        evening_peak = datetime.now().replace(hour=19, minute=0, second=0, microsecond=0)
+        recommendations: List[Dict] = []
 
-                # Simulate demand prediction for peak hour
-                peak_hour = datetime.now().replace(hour=20, minute=0, second=0, microsecond=0)
-                details = predictor.predict_demand_details(zone.id, peak_hour)
-                demand = details["prediction"]
-                confidence = details["confidence"]
+        for station in stations:
+            state = generate_current_state(station, evening_peak)
+            predicted_demand = predict_demand(int(station["id"]), evening_peak)
+            capacity = float(state["capacity"])
+            wait_time = float(state["wait_time"])
+            utilization = predicted_demand / max(capacity, 1.0)
+            zone_meta = nearest_zone(float(station["lat"]), float(station["lng"]))
 
-                # Calculate scores
-                demand_density = demand / max(stations_count, 1)
-                growth_rate = min(sessions / max(stations_count, 1), 10)  # Cap at 10
+            # Weighted score tuned for expansion planning:
+            # demand pressure + queue pressure + utilization pressure
+            grid_stress_score = round(
+                (predicted_demand * 0.52)
+                + (wait_time * 7.5)
+                + (utilization * 120.0),
+                2,
+            )
 
-                # Grid stress (inverse of utilization)
-                total_capacity = sum(s.capacity for s in db.query(ChargingStation).filter(ChargingStation.zone_id == zone.id).all())
-                current_load = sum(s.current_load for s in db.query(ChargingStation).filter(ChargingStation.zone_id == zone.id).all())
-                if total_capacity == 0:
-                    total_capacity = details["capacity"]
-                    current_load = demand
-                utilization = current_load / max(total_capacity, 1)
-                grid_stress = max(0, utilization - 0.8)  # Stress above 80% utilization
+            recommendations.append(
+                {
+                    "station_id": int(station["id"]),
+                    "zone_id": int(zone_meta["id"]),
+                    "zone_name": str(zone_meta["name"]),
+                    "name": str(station["name"]),
+                    "lat": float(station["lat"]),
+                    "lng": float(station["lng"]),
+                    "score": grid_stress_score,
+                    "grid_stress_score": grid_stress_score,
+                    "predicted_demand": round(predicted_demand, 2),
+                    "wait_time": round(wait_time, 1),
+                    "capacity": round(capacity, 1),
+                    "status": state["status"],
+                    "operator": station.get("operator", "Unknown"),
+                    "justification": (
+                        f"{station['name']} is projected at {predicted_demand:.0f} kW near 7 PM "
+                        f"with ~{wait_time:.0f} min wait and {utilization * 100:.0f}% utilization."
+                    ),
+                }
+            )
 
-                # Composite score
-                score = demand_density * max(growth_rate, 1) * (1 - grid_stress) * max(confidence, 0.5)
-
-                if score > 0:
-                    recommendations.append({
-                        "zone_id": zone.id,
-                        "zone_name": zone.name,
-                        "score": round(score, 2),
-                        "justification": (
-                            f"High demand ({demand:.1f} kW), growth rate {growth_rate:.1f}, "
-                            f"grid stress {grid_stress:.2f}, confidence {round(confidence * 100)}%"
-                        )
-                    })
-
-            # Sort by score descending
-            recommendations.sort(key=lambda x: x['score'], reverse=True)
-            return recommendations[:5]  # Top 5
-
-        finally:
-            db.close()
+        recommendations.sort(key=lambda item: item["grid_stress_score"], reverse=True)
+        return recommendations[:5]

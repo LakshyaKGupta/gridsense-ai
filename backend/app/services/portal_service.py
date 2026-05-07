@@ -45,6 +45,7 @@ class PortalService:
         selected_zone = get_zone_by_name(zone_name)
         zone_id = int(selected_zone["id"])
         now = datetime.now()
+        await get_real_stations()
 
         current = self.predictor.predict_demand_details(zone_id, now, scenario_key)
         forecast_points: List[Dict] = []
@@ -643,7 +644,7 @@ class PortalService:
             "nearest_station": nearest_station,
             "selected_station": route_station,
             "route": route,
-            "station_options": stations[:6],
+            "station_options": stations[:16],
             "alternatives": alternatives,
             "decision_support": decision_support,
             "charging_recommendation": best_window,
@@ -837,9 +838,11 @@ class PortalService:
     async def _build_operator_station_workspace(self, selected_zone_name: str) -> List[Dict]:
         stations = await get_real_stations()
         workspace = []
-        for station in stations[:18]:
-            if station["zone_name"] != selected_zone_name:
-                continue
+        prioritized = sorted(
+            stations,
+            key=lambda station: (0 if station["zone_name"] == selected_zone_name else 1, -station["load"], station["distance"]),
+        )
+        for station in prioritized[:16]:
             utilization = round((station["load"] / max(station["capacity"], 1)) * 100, 1)
             workspace.append(
                 {
