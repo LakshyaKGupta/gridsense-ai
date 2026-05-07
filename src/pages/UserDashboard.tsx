@@ -318,34 +318,58 @@ export default function UserDashboard() {
             )}
             
             {workspace === 'route' && (
-            <div className="relative h-[600px] bg-slate-900 flex items-center justify-center">
-              <div className="text-center">
-                <Navigation size={32} className="mx-auto mb-3 text-blue-400 opacity-50" />
-                <p className="text-slate-400 text-sm">Route planning map</p>
-                <p className="text-slate-500 text-xs mt-2">Multi-stop charging routes with optimized stops</p>
+            <div className="relative h-[600px] rounded-2xl overflow-hidden border border-white/10 bg-slate-900 flex items-center justify-center group">
+              <img src="/images/ev_route_planner.png" alt="Route Planner Map" className="absolute inset-0 w-full h-full object-cover opacity-60 group-hover:opacity-80 transition duration-500" />
+              <div className="relative z-10 text-center bg-black/40 backdrop-blur-md p-6 rounded-2xl border border-white/10">
+                <Navigation size={32} className="mx-auto mb-3 text-blue-400" />
+                <p className="text-white font-medium">Route Planning Map</p>
+                <p className="text-blue-200/70 text-xs mt-2 max-w-xs">AI-optimized multi-stop charging routes with predictive load balancing.</p>
               </div>
             </div>
             )}
 
             {workspace === 'smart' && (
-            <div className="relative h-[600px] bg-slate-900 flex items-center justify-center">
-              <div className="text-center">
-                <Zap size={32} className="mx-auto mb-3 text-yellow-400 opacity-50" />
-                <p className="text-slate-400 text-sm">Smart charging schedule</p>
-                <p className="text-slate-500 text-xs mt-2">Optimized charging times based on grid load</p>
+            <div className="relative h-[600px] rounded-2xl overflow-hidden border border-white/10 bg-slate-900 flex items-center justify-center group">
+              <img src="/images/ev_smart_charge.png" alt="Smart Charging Analytics" className="absolute inset-0 w-full h-full object-cover opacity-60 group-hover:opacity-80 transition duration-500" />
+              <div className="relative z-10 text-center bg-black/40 backdrop-blur-md p-6 rounded-2xl border border-white/10">
+                <Zap size={32} className="mx-auto mb-3 text-emerald-400" />
+                <p className="text-white font-medium">Smart Charging Schedule</p>
+                <p className="text-emerald-200/70 text-xs mt-2 max-w-xs">Automated off-peak charging synced with Bangalore's grid load.</p>
               </div>
             </div>
             )}
 
-            {(workspace === 'vehicle' || workspace === 'history' || workspace === 'saved' || workspace === 'insights' || workspace === 'notifications' || workspace === 'wallet' || workspace === 'settings') && (
-            <div className="relative h-[600px] bg-slate-900 flex items-center justify-center">
-              <div className="text-center">
-                <AlertCircle size={32} className="mx-auto mb-3 text-slate-400 opacity-50" />
-                <p className="text-slate-400 text-sm">{workspace.charAt(0).toUpperCase() + workspace.slice(1)} workspace</p>
-                <p className="text-slate-500 text-xs mt-2">Coming soon - Detailed view for {workspace}</p>
+            {workspace === 'vehicle' && (
+            <div className="relative h-[600px] rounded-2xl overflow-hidden border border-white/10 bg-slate-900 flex items-center justify-center group">
+              <img src="/images/ev_vehicle_profile.png" alt="Vehicle 3D Render" className="absolute inset-0 w-full h-full object-cover opacity-80 group-hover:opacity-100 transition duration-500" />
+              <div className="absolute bottom-6 left-6 z-10 bg-black/60 backdrop-blur-md p-4 rounded-xl border border-white/10">
+                <p className="text-white font-semibold">{profile?.user_data?.vehicleModel || 'Tata Nexon EV'}</p>
+                <p className="text-emerald-400 text-xs mt-1">Battery Health: 98% • Range: 312 km</p>
               </div>
             </div>
             )}
+
+            {workspace === 'insights' && (
+            <div className="relative h-[600px] rounded-2xl overflow-hidden border border-white/10 bg-slate-900 flex items-center justify-center group">
+              <img src="/images/ev_insights.png" alt="EV Charging Insights" className="absolute inset-0 w-full h-full object-cover opacity-70 group-hover:opacity-90 transition duration-500" />
+              <div className="relative z-10 text-center bg-black/40 backdrop-blur-md p-6 rounded-2xl border border-white/10">
+                <AlertCircle size={32} className="mx-auto mb-3 text-purple-400" />
+                <p className="text-white font-medium">Charging Analytics</p>
+                <p className="text-purple-200/70 text-xs mt-2 max-w-xs">Monthly savings, energy utilization, and grid impact metrics.</p>
+              </div>
+            </div>
+            )}
+
+            {(workspace === 'history' || workspace === 'saved' || workspace === 'notifications' || workspace === 'wallet' || workspace === 'settings') && (
+            <div className="relative h-[600px] rounded-2xl overflow-hidden border border-white/10 bg-slate-900 flex items-center justify-center">
+              <div className="text-center bg-white/5 p-8 rounded-2xl border border-white/5">
+                <AlertCircle size={32} className="mx-auto mb-3 text-slate-400 opacity-50" />
+                <p className="text-slate-300 font-medium">{workspace.charAt(0).toUpperCase() + workspace.slice(1)}</p>
+                <p className="text-slate-500 text-xs mt-2">This module is locked in the demo environment.</p>
+              </div>
+            </div>
+            )}
+
           </section>
 
           {/* ===== RIGHT PANEL ===== */}
