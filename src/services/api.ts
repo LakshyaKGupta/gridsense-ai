@@ -830,7 +830,12 @@ function generateForecastCurve(baseCapacity: number): ForecastPoint[] {
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const fallback = getFallbackResponse<T>(path);
-  if (fallback !== undefined && shouldUseLocalFallback(init?.headers)) {
+  const allowForcedLocalFallback =
+    !path.startsWith('/portal/') &&
+    !path.startsWith('/stations/nearby') &&
+    path !== '/locations/recommend';
+
+  if (fallback !== undefined && allowForcedLocalFallback && shouldUseLocalFallback(init?.headers)) {
     isBackendLive = false;
     return fallback;
   }
