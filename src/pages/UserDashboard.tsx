@@ -1,10 +1,11 @@
 import { useEffect, useState, useMemo } from 'react';
-import { Navigation, AlertCircle, Zap, ChevronRight } from 'lucide-react';
+import { Navigation, AlertCircle, Zap, ChevronRight, Battery, Settings, Activity, Map as MapIcon } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { dashboardAPI, isBackendLive, UserDashboardPayload, Forecast } from '../services/api';
-import Map, { Marker, Popup, NavigationControl } from 'react-map-gl/maplibre';
+import Map, { Marker, Popup, NavigationControl, Source, Layer } from 'react-map-gl/maplibre';
 import 'maplibre-gl/dist/maplibre-gl.css';
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 
 const MAP_STYLE = 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json';
 const DEFAULT_LOCATION = { lat: 12.9716, lng: 77.5946 };
@@ -240,10 +241,10 @@ export default function UserDashboard() {
 
       <main className="mx-auto max-w-7xl px-4 py-4 sm:px-6">
         <div className="grid gap-4 lg:grid-cols-[1fr_380px]">
-          {/* ===== MAP ===== */}
-          <section className="rounded-2xl border border-white/8 bg-white/[0.03] overflow-hidden">
+          {/* ===== MAP & MAIN WORKSPACE ===== */}
+          <section className="rounded-2xl border border-white/8 bg-[#0B0F14] overflow-hidden flex flex-col h-[600px] shadow-2xl">
             {workspace === 'charge' && (
-            <div className="relative h-[600px] bg-slate-900">
+            <div className="relative w-full h-full bg-slate-900">
               <Map
                 {...viewState}
                 onMove={(evt) => setViewState(evt.viewState)}
@@ -318,57 +319,141 @@ export default function UserDashboard() {
             )}
             
             {workspace === 'route' && (
-            <div className="relative h-[600px] rounded-2xl overflow-hidden border border-white/10 bg-slate-900 flex items-center justify-center group">
-              <img src="/images/ev_route_planner.png" alt="Route Planner Map" className="absolute inset-0 w-full h-full object-cover opacity-60 group-hover:opacity-80 transition duration-500" />
-              <div className="relative z-10 text-center bg-black/40 backdrop-blur-md p-6 rounded-2xl border border-white/10">
-                <Navigation size={32} className="mx-auto mb-3 text-blue-400" />
-                <p className="text-white font-medium">Route Planning Map</p>
-                <p className="text-blue-200/70 text-xs mt-2 max-w-xs">AI-optimized multi-stop charging routes with predictive load balancing.</p>
+            <div className="relative w-full h-full bg-slate-900">
+              <Map
+                {...viewState}
+                onMove={(evt) => setViewState(evt.viewState)}
+                mapStyle={MAP_STYLE}
+                attributionControl={false}
+                style={{ width: '100%', height: '100%' }}
+              >
+                <NavigationControl position="bottom-right" />
+                <Marker longitude={routeOrigin.lng} latitude={routeOrigin.lat} anchor="center">
+                  <div className="h-4 w-4 rounded-full bg-blue-500 border-2 border-white shadow-lg" />
+                </Marker>
+                {/* Mock destination marker */}
+                <Marker longitude={77.62} latitude={12.93} anchor="center">
+                  <div className="h-4 w-4 rounded-full bg-emerald-500 border-2 border-white shadow-lg" />
+                </Marker>
+                <Source id="route" type="geojson" data={{
+                  type: 'Feature',
+                  properties: {},
+                  geometry: {
+                    type: 'LineString',
+                    coordinates: [[routeOrigin.lng, routeOrigin.lat], [77.595, 12.95], [77.61, 12.94], [77.62, 12.93]]
+                  }
+                }}>
+                  <Layer id="route-line" type="line" paint={{ 'line-color': '#3b82f6', 'line-width': 4, 'line-opacity': 0.8 }} />
+                </Source>
+              </Map>
+              <div className="absolute top-4 left-4 bg-black/80 backdrop-blur-md p-4 rounded-xl border border-white/10 w-72">
+                <h3 className="text-white font-medium mb-3 flex items-center gap-2"><MapIcon size={16} className="text-blue-400"/> Active Route</h3>
+                <div className="space-y-3 text-sm">
+                  <div className="flex justify-between text-slate-300"><span>Destination:</span> <span className="text-white">Koramangala</span></div>
+                  <div className="flex justify-between text-slate-300"><span>Distance:</span> <span className="text-white">8.5 km</span></div>
+                  <div className="flex justify-between text-slate-300"><span>Est. Arrival:</span> <span className="text-white">24 min</span></div>
+                </div>
               </div>
             </div>
             )}
 
             {workspace === 'smart' && (
-            <div className="relative h-[600px] rounded-2xl overflow-hidden border border-white/10 bg-slate-900 flex items-center justify-center group">
-              <img src="/images/ev_smart_charge.png" alt="Smart Charging Analytics" className="absolute inset-0 w-full h-full object-cover opacity-60 group-hover:opacity-80 transition duration-500" />
-              <div className="relative z-10 text-center bg-black/40 backdrop-blur-md p-6 rounded-2xl border border-white/10">
-                <Zap size={32} className="mx-auto mb-3 text-emerald-400" />
-                <p className="text-white font-medium">Smart Charging Schedule</p>
-                <p className="text-emerald-200/70 text-xs mt-2 max-w-xs">Automated off-peak charging synced with Bangalore's grid load.</p>
+            <div className="relative w-full h-full bg-[#0B0F14] p-6 flex flex-col">
+              <div className="flex items-center gap-3 mb-6">
+                <div className="p-2 bg-emerald-500/10 rounded-lg"><Zap size={20} className="text-emerald-400"/></div>
+                <div>
+                  <h3 className="text-white font-medium text-lg">Smart Charging Optimization</h3>
+                  <p className="text-slate-400 text-sm">Automated scheduling based on GridSense load forecasts</p>
+                </div>
+              </div>
+              <div className="flex-1 bg-white/[0.02] border border-white/5 rounded-xl p-4">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={[
+                    { label: '00:00', predicted_demand: 40 }, { label: '04:00', predicted_demand: 38 },
+                    { label: '08:00', predicted_demand: 65 }, { label: '12:00', predicted_demand: 62 },
+                    { label: '16:00', predicted_demand: 68 }, { label: '20:00', predicted_demand: 92 },
+                    { label: '24:00', predicted_demand: 50 }
+                  ]}>
+                      <defs>
+                        <linearGradient id="colorDemand" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#10b981" stopOpacity={0.3}/>
+                          <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#ffffff10" vertical={false} />
+                      <XAxis dataKey="label" stroke="#ffffff40" tick={{ fill: '#ffffff80', fontSize: 12 }} />
+                      <YAxis stroke="#ffffff40" tick={{ fill: '#ffffff80', fontSize: 12 }} />
+                      <RechartsTooltip 
+                        contentStyle={{ backgroundColor: '#0f172a', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px' }}
+                        itemStyle={{ color: '#fff' }}
+                      />
+                      <Area type="monotone" dataKey="predicted_demand" stroke="#10b981" strokeWidth={2} fillOpacity={1} fill="url(#colorDemand)" />
+                      {/* Highlight optimal window 23:00 to 05:00 */}
+                      <ReferenceLine x="23:00" stroke="#3b82f6" strokeDasharray="3 3" label={{ position: 'top', value: 'Optimal Start', fill: '#3b82f6', fontSize: 10 }} />
+                  </AreaChart>
+                </ResponsiveContainer>
               </div>
             </div>
             )}
 
             {workspace === 'vehicle' && (
-            <div className="relative h-[600px] rounded-2xl overflow-hidden border border-white/10 bg-slate-900 flex items-center justify-center group">
-              <img src="/images/ev_vehicle_profile.png" alt="Vehicle 3D Render" className="absolute inset-0 w-full h-full object-cover opacity-80 group-hover:opacity-100 transition duration-500" />
-              <div className="absolute bottom-6 left-6 z-10 bg-black/60 backdrop-blur-md p-4 rounded-xl border border-white/10">
-                <p className="text-white font-semibold">{profile?.user_data?.vehicleModel || 'Tata Nexon EV'}</p>
-                <p className="text-emerald-400 text-xs mt-1">Battery Health: 98% • Range: 312 km</p>
-              </div>
+            <div className="relative w-full h-full bg-[#0B0F14] p-8 flex flex-col items-center justify-center">
+               <div className="w-full max-w-lg space-y-6">
+                 <div className="text-center mb-8">
+                   <h2 className="text-3xl font-bold text-white">{profile?.user_data?.vehicleModel || 'Tata Nexon EV'}</h2>
+                   <p className="text-emerald-400 mt-2 font-medium">Connected & Online</p>
+                 </div>
+                 <div className="grid grid-cols-2 gap-4">
+                   <div className="bg-white/[0.03] border border-white/10 p-5 rounded-2xl flex items-center gap-4">
+                     <div className="p-3 bg-blue-500/10 rounded-full"><Battery size={24} className="text-blue-400"/></div>
+                     <div><p className="text-slate-400 text-sm">Battery Level</p><p className="text-2xl font-semibold text-white">42%</p></div>
+                   </div>
+                   <div className="bg-white/[0.03] border border-white/10 p-5 rounded-2xl flex items-center gap-4">
+                     <div className="p-3 bg-emerald-500/10 rounded-full"><MapIcon size={24} className="text-emerald-400"/></div>
+                     <div><p className="text-slate-400 text-sm">Est. Range</p><p className="text-2xl font-semibold text-white">128 km</p></div>
+                   </div>
+                   <div className="bg-white/[0.03] border border-white/10 p-5 rounded-2xl flex items-center gap-4">
+                     <div className="p-3 bg-purple-500/10 rounded-full"><Activity size={24} className="text-purple-400"/></div>
+                     <div><p className="text-slate-400 text-sm">Battery Health</p><p className="text-2xl font-semibold text-white">98%</p></div>
+                   </div>
+                   <div className="bg-white/[0.03] border border-white/10 p-5 rounded-2xl flex items-center gap-4">
+                     <div className="p-3 bg-orange-500/10 rounded-full"><Settings size={24} className="text-orange-400"/></div>
+                     <div><p className="text-slate-400 text-sm">Odometer</p><p className="text-2xl font-semibold text-white">12,450 km</p></div>
+                   </div>
+                 </div>
+               </div>
             </div>
             )}
 
             {workspace === 'insights' && (
-            <div className="relative h-[600px] rounded-2xl overflow-hidden border border-white/10 bg-slate-900 flex items-center justify-center group">
-              <img src="/images/ev_insights.png" alt="EV Charging Insights" className="absolute inset-0 w-full h-full object-cover opacity-70 group-hover:opacity-90 transition duration-500" />
-              <div className="relative z-10 text-center bg-black/40 backdrop-blur-md p-6 rounded-2xl border border-white/10">
-                <AlertCircle size={32} className="mx-auto mb-3 text-purple-400" />
-                <p className="text-white font-medium">Charging Analytics</p>
-                <p className="text-purple-200/70 text-xs mt-2 max-w-xs">Monthly savings, energy utilization, and grid impact metrics.</p>
+            <div className="relative w-full h-full bg-[#0B0F14] p-8 flex flex-col">
+              <h3 className="text-white font-medium text-lg mb-6">Charging Analytics</h3>
+              <div className="grid grid-cols-2 gap-4 mb-6">
+                <div className="bg-emerald-500/10 border border-emerald-500/20 p-5 rounded-2xl">
+                  <p className="text-emerald-400 text-sm font-medium">Smart Savings This Month</p>
+                  <p className="text-3xl font-bold text-white mt-2">₹1,240</p>
+                </div>
+                <div className="bg-blue-500/10 border border-blue-500/20 p-5 rounded-2xl">
+                  <p className="text-blue-400 text-sm font-medium">Total Energy Added</p>
+                  <p className="text-3xl font-bold text-white mt-2">142 kWh</p>
+                </div>
+              </div>
+              <div className="flex-1 bg-white/[0.03] border border-white/10 rounded-2xl p-6 flex items-center justify-center text-slate-500 text-sm">
+                Detailed session history graph will appear here after your next charge.
               </div>
             </div>
             )}
 
             {(workspace === 'history' || workspace === 'saved' || workspace === 'notifications' || workspace === 'wallet' || workspace === 'settings') && (
-            <div className="relative h-[600px] rounded-2xl overflow-hidden border border-white/10 bg-slate-900 flex items-center justify-center">
+            <div className="relative w-full h-full bg-[#0B0F14] flex items-center justify-center">
               <div className="text-center bg-white/5 p-8 rounded-2xl border border-white/5">
                 <AlertCircle size={32} className="mx-auto mb-3 text-slate-400 opacity-50" />
                 <p className="text-slate-300 font-medium">{workspace.charAt(0).toUpperCase() + workspace.slice(1)}</p>
-                <p className="text-slate-500 text-xs mt-2">This module is locked in the demo environment.</p>
+                <p className="text-slate-500 text-xs mt-2 max-w-[200px] mx-auto">This module is currently disabled in the live demo environment.</p>
               </div>
             </div>
             )}
+
 
           </section>
 
