@@ -666,9 +666,46 @@ export interface UserDashboardPayload {
   };
 }
 
-// ═══════════════════════════════════════════════════════════
-// API CLIENT
-// ═══════════════════════════════════════════════════════════
+// ─── Backend liveness flag (set by request()) ───
+// true  = last request reached the real backend
+// false = last request hit the frontend fallback
+export let isBackendLive = false;
+
+// ─── Deterministic forecast curve ───
+// Derives a 24-hour demand curve from a base capacity value.
+// No randomness — same input always produces the same shape.
+function generateForecastCurve(baseCapacity: number): ForecastPoint[] {
+  const shape = [
+    0.42, 0.40, 0.38, 0.37, 0.38, 0.42, // 00–05 night trough
+    0.56, 0.68, 0.72, 0.70, 0.67, 0.65, // 06–11 morning ramp + midday
+    0.64, 0.63, 0.64, 0.66, 0.72, 0.88, // 12–17 afternoon + pre-peak
+    0.95, 0.98, 0.94, 0.84, 0.70, 0.58, // 18–23 evening peak + wind-down
+  ];
+  const now = new Date().toISOString();
+  return shape.map((factor, hour) => {
+    const demand = Math.round(baseCapacity * factor);
+    const utilization = factor * 100;
+    const status: ForecastPoint['status'] =
+      utilization > 90 ? 'OVERLOAD RISK' : utilization > 75 ? 'CONSTRAINED' : 'STABLE';
+    const tier: ForecastPoint['confidence_tier'] = utilization > 85 ? 'Medium' : 'High';
+    return {
+      hour,
+      label: `${String(hour).padStart(2, '0')}:00`,
+      predicted_demand: demand,
+      confidence_lower: Math.round(demand * 0.92),
+      confidence_upper: Math.round(demand * 1.08),
+      confidence_tier: tier,
+      baseline_demand: Math.round(baseCapacity * factor * 0.88),
+      status,
+      timestamp: now,
+      explanation: {
+        reason: hour >= 18 && hour <= 21 ? 'Evening EV charging peak driven by residential demand.' : 'Demand within normal operating range.',
+        impact: status === 'STABLE' ? 'No action required.' : 'Monitor load closely.',
+        confidence: tier === 'High' ? 'HIGH' : 'MEDIUM',
+      },
+    };
+  });
+}
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   try {
@@ -685,13 +722,18 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     }
 
     if (raw && typeof raw === 'object' && 'data' in raw) {
+      isBackendLive = true;
       return raw.data as T;
     }
 
+    isBackendLive = true;
     return raw as T;
   } catch (error) {
     const fallback = getFallbackResponse<T>(path);
-    if (fallback !== undefined) return fallback;
+    if (fallback !== undefined) {
+      isBackendLive = false;
+      return fallback;
+    }
     throw error;
   }
 }
@@ -704,8 +746,9 @@ function getFallbackResponse<T>(path: string): T | undefined {
   const zoneMatch = path.match(/\/(?:demand|forecast|optimize|impact)\/(\d+)/);
   const zoneId = zoneMatch ? Number(zoneMatch[1]) : 1;
 
-  // Operator dashboard fallback
   if (path.startsWith('/portal/operator')) {
+    const cap = 1000;
+    const curve = generateForecastCurve(cap);
     const mockOperatorDashboard: OperatorDashboardPayload = {
       role: 'operator',
       scenario: 'normal',
@@ -716,17 +759,17 @@ function getFallbackResponse<T>(path: string): T | undefined {
         { id: 'station_outage', label: 'Station Outage', active: false },
         { id: 'festival_surge', label: 'Festival Surge', active: false },
       ],
-      zone: { id: 1, name: 'Whitefield', lat: 12.97, lng: 77.63, capacity: 1000, zone_type: 'commercial' },
+      zone: { id: 1, name: 'Whitefield', lat: 12.97, lng: 77.63, capacity: cap, zone_type: 'commercial' },
       grid_stress: {
         status: 'STABLE',
         predicted_load: 600,
-        capacity: 1000,
+        capacity: cap,
         delta_kw: -400,
         overload_percent: 60,
         explanation: { reason: 'Demand is within normal operating range.', impact: 'No immediate action required.', confidence: 'HIGH' },
       },
       risk_engine: { zone: 'Whitefield', overload_probability: 0.1, risk_score: 20, risk_band: 'LOW', projected_peak_timing: '18:00', confidence_level: 'HIGH' },
-      ops_summary: { urgency: 'LOW', briefing: 'All systems operational. No critical events detected. Grid is stable across all monitored zones.', signals: { scenario: 'normal', scenario_delta_kw: 0, peak_time: '18:00', predicted_peak_kw: 600, capacity_kw: 1000, suggested_relief_zone: 'Koramangala' } },
+      ops_summary: { urgency: 'LOW', briefing: 'All systems operational. No critical events detected. Grid is stable across all monitored zones.', signals: { scenario: 'normal', scenario_delta_kw: 0, peak_time: '18:00', predicted_peak_kw: 600, capacity_kw: cap, suggested_relief_zone: 'Koramangala' } },
       event_ticker: [
         { timestamp: new Date(Date.now() - 300000).toISOString(), type: 'station_online', severity: 'INFO', message: 'Charging station came online at Whitefield Plaza' },
         { timestamp: new Date(Date.now() - 600000).toISOString(), type: 'demand_spike', severity: 'MEDIUM', message: 'Demand spike detected in Koramangala zone' },
@@ -740,9 +783,9 @@ function getFallbackResponse<T>(path: string): T | undefined {
         zone_name: 'Whitefield',
         scenario: 'normal',
         horizons: {
-          h6: { hours: 6, curve: [], peak: { hour: 18, label: '18:00', predicted_demand: 580, confidence_lower: 540, confidence_upper: 620, confidence_tier: 'High', baseline_demand: 520, status: 'STABLE', timestamp: new Date().toISOString(), explanation: { reason: 'Normal evening ramp-up expected.', impact: 'Grid stable.', confidence: 'HIGH' } } },
-          h24: { hours: 24, curve: [], peak: { hour: 19, label: '19:00', predicted_demand: 640, confidence_lower: 590, confidence_upper: 690, confidence_tier: 'High', baseline_demand: 580, status: 'STABLE', timestamp: new Date().toISOString(), explanation: { reason: 'Peak demand at evening hours driven by residential EV charging.', impact: 'Manageable within current capacity.', confidence: 'HIGH' } } },
-          h72: { hours: 72, curve: [], peak: { hour: 19, label: '19:00', predicted_demand: 660, confidence_lower: 580, confidence_upper: 740, confidence_tier: 'Medium', baseline_demand: 580, status: 'STABLE', timestamp: new Date().toISOString(), explanation: { reason: 'Weekend pattern expected with slightly elevated demand.', impact: 'Monitor closely on Friday evening.', confidence: 'MEDIUM' } } },
+          h6: { hours: 6, curve: curve.slice(12, 18), peak: { hour: 18, label: '18:00', predicted_demand: 580, confidence_lower: 540, confidence_upper: 620, confidence_tier: 'High', baseline_demand: 520, status: 'STABLE', timestamp: new Date().toISOString(), explanation: { reason: 'Normal evening ramp-up expected.', impact: 'Grid stable.', confidence: 'HIGH' } } },
+          h24: { hours: 24, curve, peak: { hour: 19, label: '19:00', predicted_demand: 640, confidence_lower: 590, confidence_upper: 690, confidence_tier: 'High', baseline_demand: 580, status: 'STABLE', timestamp: new Date().toISOString(), explanation: { reason: 'Peak demand at evening hours driven by residential EV charging.', impact: 'Manageable within current capacity.', confidence: 'HIGH' } } },
+          h72: { hours: 72, curve, peak: { hour: 19, label: '19:00', predicted_demand: 660, confidence_lower: 580, confidence_upper: 740, confidence_tier: 'Medium', baseline_demand: 580, status: 'STABLE', timestamp: new Date().toISOString(), explanation: { reason: 'Weekend pattern expected with slightly elevated demand.', impact: 'Monitor closely on Friday evening.', confidence: 'MEDIUM' } } },
         },
         baseline_comparison: {
           unmanaged: { label: 'Unmanaged', peak_kw: 700 },
@@ -750,16 +793,12 @@ function getFallbackResponse<T>(path: string): T | undefined {
           current: { label: 'Current', peak_kw: 640 },
           delta_vs_unmanaged_kw: -60,
           reduction_vs_unmanaged_percent: -8.6,
-          curves: {
-            unmanaged_24h: [],
-            optimized_24h: [],
-            current_24h: [],
-          },
+          curves: { unmanaged_24h: generateForecastCurve(700), optimized_24h: generateForecastCurve(580), current_24h: curve },
         },
         drift: { observed_kw: 612, drift_percent: 2.0, anomaly: false, reliability_score: 92 },
         generated_at: new Date().toISOString(),
       },
-      forecast: { zone_id: 1, zone_name: 'Whitefield', curve: [], peak: { label: '19:00', predicted_demand: 640, confidence_upper: 690 }, model: 'XGBoost' },
+      forecast: { zone_id: 1, zone_name: 'Whitefield', curve, peak: { label: '19:00', predicted_demand: 640, confidence_upper: 690 }, model: 'XGBoost' },
       network_summary: {
         total_zones: 10,
         zones_at_risk: 1,
@@ -772,7 +811,7 @@ function getFallbackResponse<T>(path: string): T | undefined {
         { priority: 'MEDIUM', risk_color: 'yellow', title: 'Pre-position demand response for Koramangala', reason: 'Zone approaching 85% utilization threshold during evening peak.', actions: ['Notify fleet operators', 'Activate DR program'], impact: 'Expected to reduce peak load by 40–60 kW.', confidence: 'MEDIUM' },
       ],
       zone_rankings: [
-        { id: 1, name: 'Whitefield', lat: 12.97, lng: 77.63, capacity: 1000, zone_type: 'commercial', predicted_load: 640, headroom_kw: 360, utilization_percent: 64, status: 'STABLE', active: true },
+        { id: 1, name: 'Whitefield', lat: 12.97, lng: 77.63, capacity: cap, zone_type: 'commercial', predicted_load: 640, headroom_kw: 360, utilization_percent: 64, status: 'STABLE', active: true },
         { id: 2, name: 'Koramangala', lat: 12.93, lng: 77.62, capacity: 900, zone_type: 'commercial', predicted_load: 820, headroom_kw: 80, utilization_percent: 91, status: 'CONSTRAINED', active: false },
         { id: 3, name: 'Indiranagar', lat: 12.97, lng: 77.64, capacity: 750, zone_type: 'residential', predicted_load: 510, headroom_kw: 240, utilization_percent: 68, status: 'STABLE', active: false },
         { id: 4, name: 'Electronic City', lat: 12.85, lng: 77.67, capacity: 1200, zone_type: 'industrial', predicted_load: 680, headroom_kw: 520, utilization_percent: 57, status: 'STABLE', active: false },
@@ -782,7 +821,7 @@ function getFallbackResponse<T>(path: string): T | undefined {
         { headline: 'Demand response program for Whitefield residential', reason: 'Evening peak between 18:00–20:00 shows consistent 15% spike driven by home EV charging.', impact: 'Incentivised off-peak charging could shift 120 kW of demand to off-peak hours.', confidence: 'MEDIUM' },
       ],
       all_zones: [
-        { id: 1, name: 'Whitefield', lat: 12.97, lng: 77.63, capacity: 1000, zone_type: 'commercial', active: true, type: 'commercial' },
+        { id: 1, name: 'Whitefield', lat: 12.97, lng: 77.63, capacity: cap, zone_type: 'commercial', active: true, type: 'commercial' },
         { id: 2, name: 'Koramangala', lat: 12.93, lng: 77.62, capacity: 900, zone_type: 'commercial', active: false, type: 'commercial' },
         { id: 3, name: 'Indiranagar', lat: 12.97, lng: 77.64, capacity: 750, zone_type: 'residential', active: false, type: 'residential' },
         { id: 4, name: 'Electronic City', lat: 12.85, lng: 77.67, capacity: 1200, zone_type: 'industrial', active: false, type: 'industrial' },
@@ -792,6 +831,49 @@ function getFallbackResponse<T>(path: string): T | undefined {
       workflow: { active_actions: [], recent_events: [] },
     };
     return mockOperatorDashboard as T;
+  }
+
+  // User dashboard fallback — prevents 500 when backend is down
+  if (path.startsWith('/portal/user')) {
+    const mockUserDashboard: UserDashboardPayload = {
+      role: 'user',
+      zone: { id: 1, name: 'Whitefield', lat: 12.97, lng: 77.63, capacity: 1000, zone_type: 'commercial' },
+      effective_location: { lat: 12.97, lng: 77.63 },
+      profile_context: { vehicle_model: 'Tata Nexon EV', battery_capacity_kwh: 45, home_charging_access: true, typical_charging_time: 'Night' },
+      service_area_notice: null,
+      nearest_station: { id: 1, name: 'Tata Power EV Hub — Whitefield', lat: 12.968, lng: 77.632, operator: 'Tata Power', status: 'GREEN', load: 42, capacity: 120, distance: 0.8, wait_time: 5, zone_name: 'Whitefield', utilization_percent: 35, connector_types: ['CCS2', 'Type 2'], charging_speed: 'fast' },
+      selected_station: null,
+      route: null,
+      station_options: [
+        { id: 1, name: 'Tata Power EV Hub — Whitefield', lat: 12.968, lng: 77.632, operator: 'Tata Power', status: 'GREEN', load: 42, capacity: 120, distance: 0.8, wait_time: 5, zone_name: 'Whitefield', utilization_percent: 35, connector_types: ['CCS2', 'Type 2'], charging_speed: 'fast' },
+        { id: 2, name: 'Ather Grid — Phoenix Marketcity', lat: 12.972, lng: 77.641, operator: 'Ather Energy', status: 'YELLOW', load: 88, capacity: 100, distance: 1.4, wait_time: 18, zone_name: 'Whitefield', utilization_percent: 88, connector_types: ['Ather'], charging_speed: 'fast' },
+        { id: 3, name: 'ChargeZone — Prestige Tech Park', lat: 12.962, lng: 77.625, operator: 'ChargeZone', status: 'GREEN', load: 55, capacity: 200, distance: 2.1, wait_time: 0, zone_name: 'Whitefield', utilization_percent: 28, connector_types: ['CCS2', 'CHAdeMO'], charging_speed: 'rapid' },
+      ],
+      alternatives: [],
+      decision_support: {
+        target_energy_kwh: 22,
+        estimated_session_minutes: 45,
+        public_cost_inr: 285,
+        home_cost_inr: null,
+        savings_vs_home_inr: null,
+        queue_time_savings_minutes: 13,
+        route_provider: 'openroute',
+        home_charge_recommended: false,
+        congestion_reduction_percent: 35,
+        best_time_benefit: 'Save ₹35–60 by charging after 23:00 during low-demand window.',
+        recommended_action: { type: 'charge_now', headline: 'Charge now at Tata Power EV Hub', why: 'Grid load is low and your nearest station has short wait time. Off-peak rates apply until 18:00.', benefits: ['35% utilization — minimal queue', 'Off-peak rate saves ~₹40', 'Grid headroom sufficient for fast charging'], confidence: 'HIGH' },
+        charge_now: {
+          best_station_right_now: { station_id: 1, station_name: 'Tata Power EV Hub — Whitefield', station_lat: 12.968, station_lng: 77.632, distance_km: 0.8, wait_time_minutes: 5, utilization_percent: 35, estimated_total_minutes: 45, headline: 'Closest available station', why: 'Closest station with available capacity and off-peak rates.', confidence: 'HIGH' },
+          wait_time_saved: { minutes: 18, why: 'Recommended station has 13 min less wait than the area average.' },
+          cheapest_option: { type: 'station' as const, station_id: 3, station_name: 'ChargeZone — Prestige Tech Park', station_lat: 12.962, station_lng: 77.625, estimated_cost_inr: 240, why: 'Rapid charger at off-peak rate. Faster session reduces total cost.', confidence: 'HIGH' },
+          fastest_option: { station_id: 3, station_name: 'ChargeZone — Prestige Tech Park', station_lat: 12.962, station_lng: 77.625, distance_km: 2.1, wait_time_minutes: 0, utilization_percent: 28, estimated_total_minutes: 32, headline: '150 kW rapid charger — no queue', why: 'Rapid 150 kW charger with no current queue.', confidence: 'HIGH' },
+          lowest_congestion_option: { station_id: 3, station_name: 'ChargeZone — Prestige Tech Park', station_lat: 12.962, station_lng: 77.625, distance_km: 2.1, wait_time_minutes: 0, utilization_percent: 28, estimated_total_minutes: 32, headline: 'Lowest load in area', why: 'Lowest utilization in your area right now.', confidence: 'HIGH' },
+        },
+      },
+      charging_recommendation: { time_label: '23:00', predicted_demand: 380, headline: 'Best charging window: 11 PM – 1 AM', reason: 'Demand drops 40% after 22:00 as commercial load clears. Off-peak rates apply.', impact: 'Save ₹35–60 vs peak charging cost.', confidence: 'HIGH' },
+      load_context: { prediction: 600, confidence_lower: 550, confidence_upper: 650, status: 'STABLE', explanation: { reason: 'Demand within normal range.', impact: 'No grid constraints on charging.', confidence: 'HIGH' } },
+    };
+    return mockUserDashboard as T;
   }
 
   if (path === '/dashboard/summary') return mockDashboardData as T;

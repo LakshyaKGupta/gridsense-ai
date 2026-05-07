@@ -2,7 +2,7 @@ import { useEffect, useState, useMemo } from 'react';
 import { Navigation, AlertCircle, Zap, ChevronRight } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { dashboardAPI, UserDashboardPayload, Forecast } from '../services/api';
+import { dashboardAPI, isBackendLive, UserDashboardPayload, Forecast } from '../services/api';
 import Map, { Marker, Popup, NavigationControl } from 'react-map-gl/maplibre';
 import 'maplibre-gl/dist/maplibre-gl.css';
 
@@ -10,19 +10,10 @@ const MAP_STYLE = 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.j
 const DEFAULT_LOCATION = { lat: 12.9716, lng: 77.5946 };
 const BENGALURU_BOUNDS = { latMin: 12.82, latMax: 13.15, lngMin: 77.45, lngMax: 77.80 };
 
-type UserWorkspace = 'charge' | 'route' | 'smart' | 'vehicle' | 'history' | 'saved' | 'insights' | 'notifications' | 'wallet' | 'settings';
+type UserWorkspace = 'charge';
 
 const USER_WORKSPACES: { id: UserWorkspace; label: string }[] = [
   { id: 'charge', label: 'Charge Now' },
-  { id: 'route', label: 'Route' },
-  { id: 'smart', label: 'Smart' },
-  { id: 'vehicle', label: 'Vehicle' },
-  { id: 'history', label: 'History' },
-  { id: 'saved', label: 'Saved' },
-  { id: 'insights', label: 'Insights' },
-  { id: 'notifications', label: 'Alerts' },
-  { id: 'wallet', label: 'Wallet' },
-  { id: 'settings', label: 'Settings' },
 ];
 
 function isInBengaluru(lat: number, lng: number): boolean {
@@ -202,6 +193,10 @@ export default function UserDashboard() {
                 Demo: Bengaluru
               </span>
             )}
+            {isBackendLive
+              ? <span className="rounded-full border border-emerald-400/30 bg-emerald-400/10 px-3 py-1 text-[10px] uppercase tracking-[0.22em] text-emerald-300">● Live</span>
+              : <span className="rounded-full border border-amber-400/30 bg-amber-400/10 px-3 py-1 text-[10px] uppercase tracking-[0.22em] text-amber-300">◎ Simulation</span>
+            }
             <Link to="/" className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-slate-400 hover:text-white transition">
               Home
             </Link>
@@ -313,35 +308,6 @@ export default function UserDashboard() {
             </div>
             )}
             
-            {workspace === 'route' && (
-            <div className="relative h-[600px] bg-slate-900 flex items-center justify-center">
-              <div className="text-center">
-                <Navigation size={32} className="mx-auto mb-3 text-blue-400 opacity-50" />
-                <p className="text-slate-400 text-sm">Route planning map</p>
-                <p className="text-slate-500 text-xs mt-2">Multi-stop charging routes with optimized stops</p>
-              </div>
-            </div>
-            )}
-
-            {workspace === 'smart' && (
-            <div className="relative h-[600px] bg-slate-900 flex items-center justify-center">
-              <div className="text-center">
-                <Zap size={32} className="mx-auto mb-3 text-yellow-400 opacity-50" />
-                <p className="text-slate-400 text-sm">Smart charging schedule</p>
-                <p className="text-slate-500 text-xs mt-2">Optimized charging times based on grid load</p>
-              </div>
-            </div>
-            )}
-
-            {(workspace === 'vehicle' || workspace === 'history' || workspace === 'saved' || workspace === 'insights' || workspace === 'notifications' || workspace === 'wallet' || workspace === 'settings') && (
-            <div className="relative h-[600px] bg-slate-900 flex items-center justify-center">
-              <div className="text-center">
-                <AlertCircle size={32} className="mx-auto mb-3 text-slate-400 opacity-50" />
-                <p className="text-slate-400 text-sm">{workspace.charAt(0).toUpperCase() + workspace.slice(1)} workspace</p>
-                <p className="text-slate-500 text-xs mt-2">Coming soon - Detailed view for {workspace}</p>
-              </div>
-            </div>
-            )}
           </section>
 
           {/* ===== RIGHT PANEL ===== */}
@@ -565,175 +531,6 @@ export default function UserDashboard() {
                 </div>
               </section>
              )}
-
-            {/* Route Planner Workspace */}
-            {workspace === 'route' && (
-              <>
-                <section className="rounded-2xl border border-white/8 bg-white/[0.03] p-4">
-                  <p className="text-[10px] uppercase tracking-[0.2em] text-slate-500 font-medium">Route Planner</p>
-                  <div className="mt-3 space-y-3">
-                    <div className="rounded-lg bg-white/5 p-3">
-                      <p className="text-xs text-slate-400 mb-2">Charging stops recommended</p>
-                      <p className="text-2xl font-semibold text-white">2-3</p>
-                      <p className="text-xs text-slate-500 mt-1">For optimal journey time</p>
-                    </div>
-                    <button className="w-full bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 rounded-lg transition">Plan Route</button>
-                  </div>
-                </section>
-              </>
-            )}
-
-            {/* Smart Charging Workspace */}
-            {workspace === 'smart' && (
-              <>
-                <section className="rounded-2xl border border-white/8 bg-white/[0.03] p-4">
-                  <p className="text-[10px] uppercase tracking-[0.2em] text-slate-500 font-medium">Charging Schedule</p>
-                  <div className="mt-3 space-y-3">
-                    <div className="rounded-lg bg-emerald-400/10 border border-emerald-400/20 p-3">
-                      <p className="text-xs text-emerald-300 font-medium">Best time to charge</p>
-                      <p className="text-lg font-semibold text-white mt-1">11 PM - 2 AM</p>
-                      <p className="text-xs text-slate-400 mt-1">Low grid load period</p>
-                    </div>
-                    <button className="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-semibold py-2 rounded-lg transition">Schedule Charging</button>
-                  </div>
-                </section>
-              </>
-            )}
-
-            {/* Vehicle Workspace */}
-            {workspace === 'vehicle' && (
-              <>
-                <section className="rounded-2xl border border-white/8 bg-white/[0.03] p-4">
-                  <p className="text-[10px] uppercase tracking-[0.2em] text-slate-500 font-medium">Vehicle Profile</p>
-                  <div className="mt-3 space-y-2">
-                    <div className="rounded-lg bg-white/5 p-2.5">
-                      <p className="text-xs text-slate-400">Model</p>
-                      <p className="text-sm font-semibold text-white mt-0.5">{profile?.user_data?.vehicleModel || 'Tesla Model 3'}</p>
-                    </div>
-                    <div className="rounded-lg bg-white/5 p-2.5">
-                      <p className="text-xs text-slate-400">Battery</p>
-                      <p className="text-sm font-semibold text-white mt-0.5">{profile?.user_data?.batteryCapacityKwh || 75} kWh</p>
-                    </div>
-                  </div>
-                </section>
-              </>
-            )}
-
-            {/* History Workspace */}
-            {workspace === 'history' && (
-              <>
-                <section className="rounded-2xl border border-white/8 bg-white/[0.03] p-4">
-                  <p className="text-[10px] uppercase tracking-[0.2em] text-slate-500 font-medium">Recent Sessions</p>
-                  <div className="mt-3 space-y-2">
-                    {[1, 2, 3].map((i) => (
-                      <div key={i} className="rounded-lg bg-white/5 p-2.5">
-                        <div className="flex justify-between items-start">
-                          <p className="text-sm font-semibold text-white">Charging Station {i}</p>
-                          <span className="text-xs text-slate-400">2 days ago</span>
-                        </div>
-                        <p className="text-xs text-slate-400 mt-1">42 kWh • ₹280</p>
-                      </div>
-                    ))}
-                  </div>
-                </section>
-              </>
-            )}
-
-            {/* Saved Workspace */}
-            {workspace === 'saved' && (
-              <>
-                <section className="rounded-2xl border border-white/8 bg-white/[0.03] p-4">
-                  <p className="text-[10px] uppercase tracking-[0.2em] text-slate-500 font-medium">Saved Items</p>
-                  <div className="mt-3 space-y-2">
-                    <div className="rounded-lg bg-white/5 p-2.5">
-                      <p className="text-sm font-semibold text-white">Whitefield Station</p>
-                      <p className="text-xs text-slate-400 mt-1">5.2 km away</p>
-                    </div>
-                    <div className="rounded-lg bg-white/5 p-2.5">
-                      <p className="text-sm font-semibold text-white">Work Commute Route</p>
-                      <p className="text-xs text-slate-400 mt-1">15 km • 2 stops</p>
-                    </div>
-                  </div>
-                </section>
-              </>
-            )}
-
-            {/* Insights Workspace */}
-            {workspace === 'insights' && (
-              <>
-                <section className="rounded-2xl border border-white/8 bg-white/[0.03] p-4">
-                  <p className="text-[10px] uppercase tracking-[0.2em] text-slate-500 font-medium">Your Insights</p>
-                  <div className="mt-3 space-y-2">
-                    <div className="rounded-lg bg-blue-400/10 border border-blue-400/20 p-2.5">
-                      <p className="text-xs text-blue-300">Average charge time</p>
-                      <p className="text-lg font-semibold text-white mt-0.5">52 min</p>
-                    </div>
-                    <div className="rounded-lg bg-green-400/10 border border-green-400/20 p-2.5">
-                      <p className="text-xs text-green-300">Monthly savings</p>
-                      <p className="text-lg font-semibold text-white mt-0.5">₹420</p>
-                    </div>
-                  </div>
-                </section>
-              </>
-            )}
-
-            {/* Notifications/Alerts Workspace */}
-            {workspace === 'notifications' && (
-              <>
-                <section className="rounded-2xl border border-white/8 bg-white/[0.03] p-4">
-                  <p className="text-[10px] uppercase tracking-[0.2em] text-slate-500 font-medium">Notifications</p>
-                  <div className="mt-3 space-y-2">
-                    <div className="rounded-lg bg-amber-400/10 border border-amber-400/20 p-2.5">
-                      <p className="text-xs font-medium text-amber-300">Station maintenance</p>
-                      <p className="text-xs text-slate-400 mt-1">Whitefield station closing 2-4 PM</p>
-                    </div>
-                    <div className="rounded-lg bg-white/5 p-2.5">
-                      <p className="text-xs text-slate-300">Promo: 20% off off-peak charging</p>
-                      <p className="text-xs text-slate-500 mt-1">Available until Friday</p>
-                    </div>
-                  </div>
-                </section>
-              </>
-            )}
-
-            {/* Wallet Workspace */}
-            {workspace === 'wallet' && (
-              <>
-                <section className="rounded-2xl border border-white/8 bg-white/[0.03] p-4">
-                  <p className="text-[10px] uppercase tracking-[0.2em] text-slate-500 font-medium">Wallet & Billing</p>
-                  <div className="mt-3 space-y-2">
-                    <div className="rounded-lg bg-white/5 p-2.5">
-                      <p className="text-xs text-slate-400">Available Balance</p>
-                      <p className="text-lg font-semibold text-emerald-300 mt-0.5">₹2,450</p>
-                    </div>
-                    <div className="rounded-lg bg-white/5 p-2.5">
-                      <p className="text-xs text-slate-400">This month</p>
-                      <p className="text-sm font-semibold text-white mt-0.5">₹1,820 spent</p>
-                    </div>
-                  </div>
-                </section>
-              </>
-            )}
-
-            {/* Settings Workspace */}
-            {workspace === 'settings' && (
-              <>
-                <section className="rounded-2xl border border-white/8 bg-white/[0.03] p-4">
-                  <p className="text-[10px] uppercase tracking-[0.2em] text-slate-500 font-medium">Settings</p>
-                  <div className="mt-3 space-y-3">
-                    <button className="w-full text-left rounded-lg border border-white/8 bg-white/5 p-3 hover:bg-white/10 transition">
-                      <p className="text-sm font-medium text-white">Account Settings</p>
-                    </button>
-                    <button className="w-full text-left rounded-lg border border-white/8 bg-white/5 p-3 hover:bg-white/10 transition">
-                      <p className="text-sm font-medium text-white">Preferences</p>
-                    </button>
-                    <button className="w-full text-left rounded-lg border border-white/8 bg-white/5 p-3 hover:bg-white/10 transition">
-                      <p className="text-sm font-medium text-white">Privacy & Security</p>
-                    </button>
-                  </div>
-                </section>
-              </>
-            )}
 
             {/* DEMO MODE NOTICE */}
             {isDemoMode && (

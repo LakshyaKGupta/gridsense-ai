@@ -9,6 +9,7 @@ import Settings from './pages/Settings';
 import Profile from './pages/Profile';
 import OperatorDashboard from './pages/OperatorDashboard';
 import UserDashboard from './pages/UserDashboard';
+import FloatingCopilot from './components/ui/FloatingCopilot';
 
 const ProblemSolution = lazy(() => import('./components/sections/ProblemSolution'));
 const HowItWorks = lazy(() => import('./components/sections/HowItWorks'));
@@ -84,6 +85,7 @@ export default function App() {
     <BrowserRouter>
       <AuthProvider>
         <AppRoutes />
+        <FloatingCopilot />
       </AuthProvider>
     </BrowserRouter>
   );

@@ -5,7 +5,7 @@ import Map, { Marker, NavigationControl } from 'react-map-gl/maplibre';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { dashboardAPI, OperatorDashboardPayload } from '../services/api';
+import { dashboardAPI, isBackendLive, OperatorDashboardPayload } from '../services/api';
 import CopilotPanel from '../components/ui/CopilotPanel';
 
 const MAP_STYLE = 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json';
@@ -19,7 +19,6 @@ const WORKSPACES: { id: Workspace; label: string }[] = [
   { id: 'planning', label: 'Planning' },
   { id: 'incidents', label: 'Incidents' },
   { id: 'simulator', label: 'Scenarios' },
-  { id: 'copilot', label: 'Copilot' },
   { id: 'reports', label: 'Reports' },
   { id: 'alerts', label: 'Alerts' },
   { id: 'stations', label: 'Stations' },
@@ -200,9 +199,7 @@ export default function OperatorDashboard() {
     );
   }
 
-  console.log("OperatorDashboard rendering");
-  console.log("Data:", data);
-  console.log("Workspace:", workspace);
+
 
   return (
     <div className="min-h-screen bg-[#0B0F14] text-slate-100">
@@ -225,6 +222,10 @@ export default function OperatorDashboard() {
               </div>
             </Link>
           <div className="flex items-center gap-3">
+            {isBackendLive
+              ? <span className="rounded-full border border-emerald-400/30 bg-emerald-400/10 px-3 py-1 text-[10px] uppercase tracking-[0.22em] text-emerald-300">● Live</span>
+              : <span className="rounded-full border border-amber-400/30 bg-amber-400/10 px-3 py-1 text-[10px] uppercase tracking-[0.22em] text-amber-300">◎ Simulation</span>
+            }
             <Link to="/" className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-slate-300 hover:text-white">Home</Link>
             <Link to="/profile" className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-slate-300 hover:text-white">Profile</Link>
             <button onClick={() => void logout()} className="inline-flex items-center gap-2 rounded-xl border border-rose-400/20 bg-rose-400/10 px-4 py-2 text-sm text-rose-200">
