@@ -831,6 +831,12 @@ function generateForecastCurve(baseCapacity: number): ForecastPoint[] {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const fallback = getFallbackResponse<T>(path);
+  if (fallback !== undefined && shouldUseLocalFallback(init?.headers)) {
+    isBackendLive = false;
+    return fallback;
+  }
+
   try {
     const response = await fetch(`${API_URL}${path}`, {
       ...init,
@@ -855,7 +861,6 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     if (path.startsWith('/ai/copilot')) {
       throw error;
     }
-    const fallback = getFallbackResponse<T>(path);
     if (fallback !== undefined) {
       isBackendLive = false;
       return fallback;
@@ -868,34 +873,110 @@ function withAuth(token: string): HeadersInit {
   return { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
 }
 
+function shouldUseLocalFallback(headers?: HeadersInit): boolean {
+  const authHeader =
+    headers instanceof Headers
+      ? headers.get('Authorization')
+      : Array.isArray(headers)
+        ? headers.find(([key]) => key.toLowerCase() === 'authorization')?.[1]
+        : headers?.Authorization || headers?.authorization;
+  const token = typeof authHeader === 'string' ? authHeader.replace(/^Bearer\s+/i, '') : '';
+  const payload = token.split('.')[1];
+  if (!payload) return false;
+
+  try {
+    const decoded = JSON.parse(atob(payload));
+    return decoded?.auth_source === 'demo' || decoded?.is_demo === true;
+  } catch {
+    return false;
+  }
+}
+
 function getFallbackResponse<T>(path: string): T | undefined {
   const zoneMatch = path.match(/\/(?:demand|forecast|optimize|impact)\/(\d+)/);
   const zoneId = zoneMatch ? Number(zoneMatch[1]) : 1;
 
+  if (path.startsWith('/portal/workflow/')) {
+    const now = new Date().toISOString();
+    return {
+      id: `local-workflow-${Date.now()}`,
+      title: 'Local workflow action',
+      status: path.includes('acknowledge') ? 'acknowledged' : 'updated',
+      created_at: now,
+      updated_at: now,
+      history: [],
+    } as T;
+  }
+
   if (path.startsWith('/portal/operator')) {
-    const cap = 1000;
-    const curve = generateForecastCurve(cap);
+    const params = new URLSearchParams(path.split('?')[1] ?? '');
+    const requestedScenario = params.get('scenario') || 'normal';
+    const requestedZone = params.get('zone') || 'Whitefield';
+    const scenarioFactorById: Record<string, number> = {
+      normal: 1,
+      evening_peak: 1.18,
+      high_growth: 1.32,
+      station_outage: 1.22,
+      festival_surge: 1.42,
+    };
+    const scenarioFactor = scenarioFactorById[requestedScenario] ?? 1;
+    const scenarioDeltaKw = Math.round((scenarioFactor - 1) * 420);
+    const zoneCatalog: Array<Zone & { type: string; base_load: number }> = [
+      { id: 1, name: 'Whitefield', lat: 12.97, lng: 77.63, capacity: 1000, zone_type: 'commercial', type: 'commercial', base_load: 640 },
+      { id: 2, name: 'Koramangala', lat: 12.93, lng: 77.62, capacity: 900, zone_type: 'commercial', type: 'commercial', base_load: 820 },
+      { id: 3, name: 'Indiranagar', lat: 12.97, lng: 77.64, capacity: 750, zone_type: 'residential', type: 'residential', base_load: 510 },
+      { id: 4, name: 'Electronic City', lat: 12.85, lng: 77.67, capacity: 1200, zone_type: 'industrial', type: 'industrial', base_load: 680 },
+      { id: 5, name: 'HSR Layout', lat: 12.91, lng: 77.64, capacity: 800, zone_type: 'residential', type: 'residential', base_load: 560 },
+    ];
+    const activeFallbackZone = zoneCatalog.find((zone) => zone.name === requestedZone) ?? zoneCatalog[0];
+    const cap = activeFallbackZone.capacity;
+    const selectedLoad = Math.round(activeFallbackZone.base_load * scenarioFactor);
+    const selectedUtilization = selectedLoad / cap;
+    const selectedStatus: GridStress['status'] = selectedUtilization > 0.95 ? 'OVERLOAD RISK' : selectedUtilization > 0.78 ? 'CONSTRAINED' : 'STABLE';
+    const selectedRiskBand: OperatorDashboardPayload['risk_engine']['risk_band'] =
+      selectedStatus === 'OVERLOAD RISK' ? 'CRITICAL' : selectedStatus === 'CONSTRAINED' ? 'HIGH' : selectedUtilization > 0.68 ? 'MEDIUM' : 'LOW';
+    const curve = generateForecastCurve(cap).map((point) => ({
+      ...point,
+      predicted_demand: Math.round(point.predicted_demand * scenarioFactor),
+      confidence_lower: Math.round(point.confidence_lower * scenarioFactor),
+      confidence_upper: Math.round(point.confidence_upper * scenarioFactor),
+    }));
     const mockOperatorDashboard: OperatorDashboardPayload = {
       role: 'operator',
-      scenario: 'normal',
+      scenario: requestedScenario,
       scenario_options: [
-        { id: 'normal', label: 'Normal Operations', active: true },
-        { id: 'evening_peak', label: 'Evening Peak', active: false },
-        { id: 'high_growth', label: 'High Growth', active: false },
-        { id: 'station_outage', label: 'Station Outage', active: false },
-        { id: 'festival_surge', label: 'Festival Surge', active: false },
+        { id: 'normal', label: 'Normal Operations', active: requestedScenario === 'normal' },
+        { id: 'evening_peak', label: 'Evening Peak', active: requestedScenario === 'evening_peak' },
+        { id: 'high_growth', label: 'High Growth', active: requestedScenario === 'high_growth' },
+        { id: 'station_outage', label: 'Station Outage', active: requestedScenario === 'station_outage' },
+        { id: 'festival_surge', label: 'Festival Surge', active: requestedScenario === 'festival_surge' },
       ],
-      zone: { id: 1, name: 'Whitefield', lat: 12.97, lng: 77.63, capacity: cap, zone_type: 'commercial' },
+      zone: activeFallbackZone,
       grid_stress: {
-        status: 'STABLE',
-        predicted_load: 600,
+        status: selectedStatus,
+        predicted_load: selectedLoad,
         capacity: cap,
-        delta_kw: -400,
-        overload_percent: 60,
-        explanation: { reason: 'Demand is within normal operating range.', impact: 'No immediate action required.', confidence: 'HIGH' },
+        delta_kw: selectedLoad - cap,
+        overload_percent: Math.round(selectedUtilization * 100),
+        explanation: {
+          reason: `${activeFallbackZone.name} is running the ${requestedScenario.replace(/_/g, ' ')} fallback scenario.`,
+          impact: selectedStatus === 'STABLE' ? 'No immediate action required.' : 'Operator action is recommended before the evening peak.',
+          confidence: selectedStatus === 'OVERLOAD RISK' ? 'MEDIUM' : 'HIGH',
+        },
       },
-      risk_engine: { zone: 'Whitefield', overload_probability: 0.1, risk_score: 20, risk_band: 'LOW', projected_peak_timing: '18:00', confidence_level: 'HIGH' },
-      ops_summary: { urgency: 'LOW', briefing: 'All systems operational. No critical events detected. Grid is stable across all monitored zones.', signals: { scenario: 'normal', scenario_delta_kw: 0, peak_time: '18:00', predicted_peak_kw: 600, capacity_kw: cap, suggested_relief_zone: 'Koramangala' } },
+      risk_engine: {
+        zone: activeFallbackZone.name,
+        overload_probability: Math.min(0.98, Math.max(0.08, selectedUtilization - 0.55)),
+        risk_score: Math.min(100, Math.round(selectedUtilization * 100)),
+        risk_band: selectedRiskBand,
+        projected_peak_timing: '19:00',
+        confidence_level: selectedStatus === 'OVERLOAD RISK' ? 'MEDIUM' : 'HIGH',
+      },
+      ops_summary: {
+        urgency: selectedRiskBand,
+        briefing: `${activeFallbackZone.name} is selected. The ${requestedScenario.replace(/_/g, ' ')} scenario changes projected demand by ${scenarioDeltaKw >= 0 ? '+' : ''}${scenarioDeltaKw} kW.`,
+        signals: { scenario: requestedScenario, scenario_delta_kw: scenarioDeltaKw, peak_time: '19:00', predicted_peak_kw: selectedLoad, capacity_kw: cap, suggested_relief_zone: 'Electronic City' },
+      },
       event_ticker: [
         { timestamp: new Date(Date.now() - 300000).toISOString(), type: 'station_online', severity: 'INFO', message: 'Charging station came online at Whitefield Plaza' },
         { timestamp: new Date(Date.now() - 600000).toISOString(), type: 'demand_spike', severity: 'MEDIUM', message: 'Demand spike detected in Koramangala zone' },
@@ -905,9 +986,9 @@ function getFallbackResponse<T>(path: string): T | undefined {
         { zone: 'Indiranagar', current_load: 680, predicted_peak: 740, overload_risk: 4.2, confidence: 'MEDIUM', recommended_action: 'No action required' },
       ],
       forecast_center: {
-        zone_id: 1,
-        zone_name: 'Whitefield',
-        scenario: 'normal',
+        zone_id: activeFallbackZone.id,
+        zone_name: activeFallbackZone.name,
+        scenario: requestedScenario,
         horizons: {
           h6: { hours: 6, curve: curve.slice(12, 18), peak: { hour: 18, label: '18:00', predicted_demand: 580, confidence_lower: 540, confidence_upper: 620, confidence_tier: 'High', baseline_demand: 520, status: 'STABLE', timestamp: new Date().toISOString(), explanation: { reason: 'Normal evening ramp-up expected.', impact: 'Grid stable.', confidence: 'HIGH' } } },
           h24: { hours: 24, curve, peak: { hour: 19, label: '19:00', predicted_demand: 640, confidence_lower: 590, confidence_upper: 690, confidence_tier: 'High', baseline_demand: 580, status: 'STABLE', timestamp: new Date().toISOString(), explanation: { reason: 'Peak demand at evening hours driven by residential EV charging.', impact: 'Manageable within current capacity.', confidence: 'HIGH' } } },
@@ -924,39 +1005,43 @@ function getFallbackResponse<T>(path: string): T | undefined {
         drift: { observed_kw: 612, drift_percent: 2.0, anomaly: false, reliability_score: 92 },
         generated_at: new Date().toISOString(),
       },
-      forecast: { zone_id: 1, zone_name: 'Whitefield', curve, peak: { label: '19:00', predicted_demand: 640, confidence_upper: 690 }, model: 'XGBoost' },
+      forecast: { zone_id: activeFallbackZone.id, zone_name: activeFallbackZone.name, curve, peak: { label: '19:00', predicted_demand: selectedLoad, confidence_upper: Math.round(selectedLoad * 1.08) }, model: 'XGBoost' },
       network_summary: {
-        total_zones: 10,
-        zones_at_risk: 1,
-        constrained_zones: 1,
+        total_zones: zoneCatalog.length,
+        zones_at_risk: selectedStatus === 'STABLE' ? 1 : 2,
+        constrained_zones: selectedStatus === 'STABLE' ? 1 : 2,
         peak_window: '18:00–20:00',
         highest_headroom_zone: 'Electronic City',
-        scenario_delta_kw: 0,
+        scenario_delta_kw: scenarioDeltaKw,
       },
       action_queue: [
         { priority: 'MEDIUM', risk_color: 'yellow', title: 'Pre-position demand response for Koramangala', reason: 'Zone approaching 85% utilization threshold during evening peak.', actions: ['Notify fleet operators', 'Activate DR program'], impact: 'Expected to reduce peak load by 40–60 kW.', confidence: 'MEDIUM' },
       ],
-      zone_rankings: [
-        { id: 1, name: 'Whitefield', lat: 12.97, lng: 77.63, capacity: cap, zone_type: 'commercial', predicted_load: 640, headroom_kw: 360, utilization_percent: 64, status: 'STABLE', active: true },
-        { id: 2, name: 'Koramangala', lat: 12.93, lng: 77.62, capacity: 900, zone_type: 'commercial', predicted_load: 820, headroom_kw: 80, utilization_percent: 91, status: 'CONSTRAINED', active: false },
-        { id: 3, name: 'Indiranagar', lat: 12.97, lng: 77.64, capacity: 750, zone_type: 'residential', predicted_load: 510, headroom_kw: 240, utilization_percent: 68, status: 'STABLE', active: false },
-        { id: 4, name: 'Electronic City', lat: 12.85, lng: 77.67, capacity: 1200, zone_type: 'industrial', predicted_load: 680, headroom_kw: 520, utilization_percent: 57, status: 'STABLE', active: false },
-      ],
+      zone_rankings: zoneCatalog.map((zone) => {
+        const predicted_load = Math.round(zone.base_load * scenarioFactor);
+        const utilization_percent = Math.round((predicted_load / zone.capacity) * 100);
+        return {
+          ...zone,
+          predicted_load,
+          headroom_kw: zone.capacity - predicted_load,
+          utilization_percent,
+          status: utilization_percent > 95 ? 'OVERLOAD RISK' : utilization_percent > 78 ? 'CONSTRAINED' : 'STABLE',
+          active: zone.id === activeFallbackZone.id,
+        };
+      }),
       planning_insights: [
         { headline: 'Expand charging infrastructure in Koramangala', reason: 'Zone is consistently operating above 85% utilization during peak hours, creating grid stress risk.', impact: 'Adding 2 fast-chargers would reduce average utilization to below 75%.', confidence: 'HIGH' },
         { headline: 'Demand response program for Whitefield residential', reason: 'Evening peak between 18:00–20:00 shows consistent 15% spike driven by home EV charging.', impact: 'Incentivised off-peak charging could shift 120 kW of demand to off-peak hours.', confidence: 'MEDIUM' },
       ],
-      all_zones: [
-        { id: 1, name: 'Whitefield', lat: 12.97, lng: 77.63, capacity: cap, zone_type: 'commercial', active: true, type: 'commercial' },
-        { id: 2, name: 'Koramangala', lat: 12.93, lng: 77.62, capacity: 900, zone_type: 'commercial', active: false, type: 'commercial' },
-        { id: 3, name: 'Indiranagar', lat: 12.97, lng: 77.64, capacity: 750, zone_type: 'residential', active: false, type: 'residential' },
-        { id: 4, name: 'Electronic City', lat: 12.85, lng: 77.67, capacity: 1200, zone_type: 'industrial', active: false, type: 'industrial' },
-        { id: 5, name: 'HSR Layout', lat: 12.91, lng: 77.64, capacity: 800, zone_type: 'residential', active: false, type: 'residential' },
-      ],
+      all_zones: zoneCatalog.map((zone) => ({ ...zone, active: zone.id === activeFallbackZone.id })),
       spatial: { heatmap_points: [], overload_zones: [], congestion_corridors: [] },
       workflow: { active_actions: [], recent_events: [] },
       incidents: [],
-      stations: [],
+      stations: [
+        { id: 1, name: 'Tata Power EV Hub — Whitefield', lat: 12.968, lng: 77.632, operator: 'Tata Power', status: 'GREEN', load: 42, capacity: 120, distance: 0.8, wait_time: 5, zone_name: 'Whitefield', utilization_percent: 35, queue_trend: 'stable', predicted_wait_growth: 2, health_score: 94, connector_availability: 7, active_sessions: 6, load_capacity_ratio: 0.35, downtime_probability: 0.04 },
+        { id: 2, name: 'Ather Grid — Koramangala', lat: 12.932, lng: 77.622, operator: 'Ather Energy', status: 'YELLOW', load: 82, capacity: 100, distance: 1.4, wait_time: 18, zone_name: 'Koramangala', utilization_percent: 82, queue_trend: 'rising', predicted_wait_growth: 8, health_score: 78, connector_availability: 3, active_sessions: 12, load_capacity_ratio: 0.82, downtime_probability: 0.12 },
+        { id: 3, name: 'ChargeZone — Electronic City', lat: 12.852, lng: 77.671, operator: 'ChargeZone', status: 'GREEN', load: 55, capacity: 200, distance: 2.1, wait_time: 0, zone_name: 'Electronic City', utilization_percent: 28, queue_trend: 'falling', predicted_wait_growth: 0, health_score: 97, connector_availability: 10, active_sessions: 5, load_capacity_ratio: 0.28, downtime_probability: 0.02 },
+      ],
       system_health: {
         backend_latency_ms: 120,
         api_health: 'healthy',
@@ -970,7 +1055,7 @@ function getFallbackResponse<T>(path: string): T | undefined {
         transport_status: 'polling',
         heartbeat_at: new Date().toISOString(),
         selected_zone_observed_kw: 612,
-        scenario: 'normal',
+        scenario: requestedScenario,
       },
     };
     return mockOperatorDashboard as T;

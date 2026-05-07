@@ -266,9 +266,46 @@ export default function OperatorDashboard() {
 
   const workflowTimeline = data?.workflow?.recent_events || [];
 
+  const withLocalWorkflowUpdate = (
+    current: OperatorDashboardPayload,
+    actionTitle: string,
+    nextStatus: 'acknowledged' | 'in-progress' | 'escalated' | 'resolved',
+    timestamp: string,
+  ): OperatorDashboardPayload => ({
+    ...current,
+    action_queue: current.action_queue.map((item) =>
+      item.title === actionTitle
+        ? {
+            ...item,
+            workflow_status: nextStatus,
+            status: nextStatus === 'escalated' ? item.status : nextStatus,
+            acknowledged_at: nextStatus === 'acknowledged' ? timestamp : item.acknowledged_at,
+            acknowledged_by: nextStatus === 'acknowledged' ? 'Operator' : item.acknowledged_by,
+          }
+        : item,
+    ),
+    workflow: {
+      ...current.workflow,
+      recent_events: [
+        {
+          id: `local-${Date.now()}`,
+          action_title: actionTitle,
+          event_type: nextStatus,
+          operator: 'Operator',
+          timestamp,
+          details: `${actionTitle} marked ${nextStatus}.`,
+          new_status: nextStatus,
+        },
+        ...(current.workflow?.recent_events || []),
+      ].slice(0, 20),
+    },
+  });
+
   const runWorkflowAction = async (actionTitle: string, action: 'ack' | 'in-progress' | 'escalated' | 'resolved') => {
     if (!token) return;
     setWorkflowBusy(`${actionTitle}:${action}`);
+    const nextStatus = action === 'ack' ? 'acknowledged' : action;
+    const now = new Date().toISOString();
     try {
       if (action === 'ack') {
         await dashboardAPI.acknowledgeAction(token, actionTitle);
@@ -276,11 +313,16 @@ export default function OperatorDashboard() {
         await dashboardAPI.updateActionStatus(token, actionTitle, action, '');
       }
       const next = await dashboardAPI.getOperatorDashboard(token, selectedZone, scenario);
-      setData(next);
-      setLastUpdatedAt(new Date().toISOString());
+      setData(withLocalWorkflowUpdate(next, actionTitle, nextStatus, now));
+      setLastUpdatedAt(now);
       setError(null);
     } catch (workflowError) {
-      setError(workflowError instanceof Error ? workflowError.message : 'Workflow action failed');
+      setData((current) => {
+        if (!current) return current;
+        return withLocalWorkflowUpdate(current, actionTitle, nextStatus, now);
+      });
+      setLastUpdatedAt(now);
+      setError('Workflow service unavailable; action was applied locally for this session.');
     } finally {
       setWorkflowBusy(null);
     }

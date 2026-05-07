@@ -6,6 +6,11 @@ dist/
 .env.local
 .env.production
 *.log
+*.png
+operator-errors.txt
+runtime-errors-latest.txt
+.playwright-mcp/
+ev_charging.db
 Isometric_illustration_transitio*.mp4
 __pycache__/
 *.pyc
