@@ -1,0 +1,224 @@
+- generic [ref=e89]:
+  - banner [ref=e90]:
+    - generic [ref=e91]:
+      - generic [ref=e92]:
+        - img [ref=e94]
+        - generic [ref=e98]:
+          - paragraph [ref=e99]: EV Owner
+          - heading "Charging Navigation and Timing Console" [level=1] [ref=e100]
+      - generic [ref=e101]:
+        - link "Profile" [ref=e102] [cursor=pointer]:
+          - /url: /profile
+        - button "Sign out" [ref=e103] [cursor=pointer]:
+          - img [ref=e104]
+          - text: Sign out
+  - main [ref=e107]:
+    - generic [ref=e108]:
+      - generic [ref=e109]:
+        - generic [ref=e110]:
+          - generic [ref=e111]:
+            - paragraph [ref=e112]: Decision Guidance
+            - heading "Route to the lowest-friction charger, then move the session out of peak load." [level=2] [ref=e113]
+            - paragraph [ref=e114]: Recommendations are generated from backend station status, route distance, queue pressure, and the XGBoost demand forecast for your current zone.
+          - generic [ref=e115]:
+            - paragraph [ref=e116]: Selected Station
+            - paragraph [ref=e117]: ChargePoint Whitefield
+        - generic [ref=e118]:
+          - paragraph [ref=e119]: Avoid 7-9 PM. Charge at 11 PM to reduce wait by 25%.
+          - paragraph [ref=e120]: Peak expected due to current network charging pattern and commercial trip turnover.
+          - generic [ref=e121]:
+            - generic [ref=e122]: 88% confidence from xgboost inference using real-time context.
+            - generic [ref=e123]: Projected 268 kW remains within the 760 kW zone envelope.
+      - generic [ref=e124]:
+        - paragraph [ref=e125]: Session Economics
+        - generic [ref=e126]:
+          - generic [ref=e127]:
+            - paragraph [ref=e128]: Target Energy
+            - paragraph [ref=e129]: 18.9 kWh
+          - generic [ref=e130]:
+            - generic [ref=e131]:
+              - paragraph [ref=e132]: Public Cost
+              - paragraph [ref=e133]: INR 369
+            - generic [ref=e134]:
+              - paragraph [ref=e135]: Session Time
+              - paragraph [ref=e136]: 849 min
+          - generic [ref=e137]:
+            - paragraph [ref=e138]: Peak expected due to current network charging pattern and commercial trip turnover.
+            - paragraph [ref=e139]: Projected 314 kW remains within the 760 kW zone envelope.
+            - paragraph [ref=e140]: 88% confidence from xgboost inference using real-time context.
+    - generic [ref=e141]:
+      - generic [ref=e142]:
+        - generic [ref=e143]:
+          - paragraph [ref=e144]: Best Time to Charge
+          - img [ref=e145]
+        - paragraph [ref=e148]: 11 PM
+      - generic [ref=e149]:
+        - generic [ref=e150]:
+          - paragraph [ref=e151]: Route Duration
+          - img [ref=e152]
+        - paragraph [ref=e156]: 831 min
+      - generic [ref=e157]:
+        - generic [ref=e158]:
+          - paragraph [ref=e159]: Wait Saved
+          - img [ref=e160]
+        - paragraph [ref=e163]: 0 min
+      - generic [ref=e164]:
+        - generic [ref=e165]:
+          - paragraph [ref=e166]: Home Charging Delta
+          - img [ref=e167]
+        - paragraph [ref=e170]: INR 214
+    - generic [ref=e171]:
+      - generic [ref=e172]:
+        - generic [ref=e173]:
+          - generic [ref=e174]:
+            - paragraph [ref=e175]: Station Map
+            - heading "Live route and station availability" [level=3] [ref=e176]
+          - img [ref=e177]
+        - generic [ref=e180]:
+          - generic:
+            - region "Map" [ref=e181]
+            - button "Map marker" [ref=e182] [cursor=pointer]
+            - button "Map marker" [ref=e184] [cursor=pointer]:
+              - button "Select ChargePoint Whitefield" [ref=e185]:
+                - img [ref=e186]
+            - button "Map marker" [ref=e188] [cursor=pointer]:
+              - button "Select Tesla Charging Hub Indiranagar" [ref=e189]:
+                - img [ref=e190]
+            - button "Map marker" [ref=e192] [cursor=pointer]:
+              - button "Select ABL Charging Hub Koramangala" [ref=e193]:
+                - img [ref=e194]
+            - button "Map marker" [ref=e196] [cursor=pointer]:
+              - button "Select ABB Charging Hub Jayanagar" [ref=e197]:
+                - img [ref=e198]
+            - button "Map marker" [ref=e200] [cursor=pointer]:
+              - button "Select EESL Charging Hub Electronic City" [ref=e201]:
+                - img [ref=e202]
+          - generic [ref=e204]:
+            - button "Zoom in" [ref=e205] [cursor=pointer]
+            - button "Zoom out" [ref=e207] [cursor=pointer]
+            - button "Drag to rotate map, click to reset north" [ref=e209]
+      - generic [ref=e212]:
+        - generic [ref=e213]:
+          - generic [ref=e214]:
+            - paragraph [ref=e215]: Station Stack Rank
+            - heading "Choose the best stop, not just the nearest stop" [level=3] [ref=e216]
+          - img [ref=e217]
+        - generic [ref=e220]:
+          - button "ChargePoint Whitefield Best Fit ChargePoint • Low queue pressure and strong capacity headroom. 913.1 km 3488 min total" [ref=e221] [cursor=pointer]:
+            - generic [ref=e222]:
+              - generic [ref=e223]:
+                - generic [ref=e224]:
+                  - paragraph [ref=e225]: ChargePoint Whitefield
+                  - generic [ref=e226]: Best Fit
+                - paragraph [ref=e227]: ChargePoint • Low queue pressure and strong capacity headroom.
+              - generic [ref=e228]:
+                - paragraph [ref=e229]: 913.1 km
+                - paragraph [ref=e230]: 3488 min total
+          - button "Tesla Charging Hub Indiranagar Tesla • Low queue pressure and strong capacity headroom. 913.9 km 3491 min total" [ref=e231] [cursor=pointer]:
+            - generic [ref=e232]:
+              - generic [ref=e233]:
+                - paragraph [ref=e235]: Tesla Charging Hub Indiranagar
+                - paragraph [ref=e236]: Tesla • Low queue pressure and strong capacity headroom.
+              - generic [ref=e237]:
+                - paragraph [ref=e238]: 913.9 km
+                - paragraph [ref=e239]: 3491 min total
+          - button "ABL Charging Hub Koramangala ABL • Low queue pressure and strong capacity headroom. 919.7 km 3513 min total" [ref=e240] [cursor=pointer]:
+            - generic [ref=e241]:
+              - generic [ref=e242]:
+                - paragraph [ref=e244]: ABL Charging Hub Koramangala
+                - paragraph [ref=e245]: ABL • Low queue pressure and strong capacity headroom.
+              - generic [ref=e246]:
+                - paragraph [ref=e247]: 919.7 km
+                - paragraph [ref=e248]: 3513 min total
+          - button "ABB Charging Hub Jayanagar ABB • Moderate queue pressure but still serviceable for a planned stop. 920.2 km 3515 min total" [ref=e249] [cursor=pointer]:
+            - generic [ref=e250]:
+              - generic [ref=e251]:
+                - paragraph [ref=e253]: ABB Charging Hub Jayanagar
+                - paragraph [ref=e254]: ABB • Moderate queue pressure but still serviceable for a planned stop.
+              - generic [ref=e255]:
+                - paragraph [ref=e256]: 920.2 km
+                - paragraph [ref=e257]: 3515 min total
+          - button "EESL Charging Hub Electronic City EESL • Low queue pressure and strong capacity headroom. 928.6 km 3547 min total" [ref=e258] [cursor=pointer]:
+            - generic [ref=e259]:
+              - generic [ref=e260]:
+                - paragraph [ref=e262]: EESL Charging Hub Electronic City
+                - paragraph [ref=e263]: EESL • Low queue pressure and strong capacity headroom.
+              - generic [ref=e264]:
+                - paragraph [ref=e265]: 928.6 km
+                - paragraph [ref=e266]: 3547 min total
+        - generic [ref=e267]:
+          - generic [ref=e268]:
+            - generic [ref=e269]:
+              - paragraph [ref=e270]: ChargePoint Whitefield
+              - paragraph [ref=e271]: Whitefield • ChargePoint
+            - generic [ref=e272]: GREEN
+          - generic [ref=e273]:
+            - generic [ref=e274]:
+              - paragraph [ref=e275]: Current Load
+              - paragraph [ref=e276]: 117 / 300 kW
+            - generic [ref=e277]:
+              - paragraph [ref=e278]: Queue
+              - paragraph [ref=e279]: 0 min
+            - generic [ref=e280]:
+              - paragraph [ref=e281]: Route Provider
+              - paragraph [ref=e282]: osrm
+            - generic [ref=e283]:
+              - paragraph [ref=e284]: Battery Profile
+              - paragraph [ref=e285]: 45 kWh
+          - link "Open turn-by-turn directions" [ref=e286] [cursor=pointer]:
+            - /url: https://www.google.com/maps/dir/?api=1&origin=21.097259519390168,78.98002629704146&destination=12.9698,77.7499&travelmode=driving&dir_action=navigate
+            - img [ref=e287]
+            - text: Open turn-by-turn directions
+    - generic [ref=e289]:
+      - generic [ref=e290]:
+        - paragraph [ref=e291]: Charging Strategy
+        - generic [ref=e292]:
+          - generic [ref=e293]:
+            - paragraph [ref=e294]: Recommended Window
+            - paragraph [ref=e295]: 11 PM
+            - paragraph [ref=e296]: Projected 268 kW remains within the 760 kW zone envelope.
+          - generic [ref=e297]:
+            - paragraph [ref=e298]: Home Charging Guidance
+            - paragraph [ref=e299]: Use home charging for routine top-ups and keep public charging for urgent sessions.
+            - paragraph [ref=e300]: "Home session estimate: INR 155."
+      - generic [ref=e301]:
+        - paragraph [ref=e302]: Alternative Comparison
+        - table [ref=e304]:
+          - rowgroup [ref=e305]:
+            - row "Station Distance Wait Total Score" [ref=e306]:
+              - columnheader "Station" [ref=e307]
+              - columnheader "Distance" [ref=e308]
+              - columnheader "Wait" [ref=e309]
+              - columnheader "Total" [ref=e310]
+              - columnheader "Score" [ref=e311]
+          - rowgroup [ref=e312]:
+            - row "ChargePoint Whitefield 913.1 km 0 min 3488 min -10774.6" [ref=e313]:
+              - cell "ChargePoint Whitefield" [ref=e314]
+              - cell "913.1 km" [ref=e315]
+              - cell "0 min" [ref=e316]
+              - cell "3488 min" [ref=e317]
+              - cell "-10774.6" [ref=e318]
+            - row "Tesla Charging Hub Indiranagar 913.9 km 0 min 3491 min -10750.2" [ref=e319]:
+              - cell "Tesla Charging Hub Indiranagar" [ref=e320]
+              - cell "913.9 km" [ref=e321]
+              - cell "0 min" [ref=e322]
+              - cell "3491 min" [ref=e323]
+              - cell "-10750.2" [ref=e324]
+            - row "ABL Charging Hub Koramangala 919.7 km 0 min 3513 min -10836.4" [ref=e325]:
+              - cell "ABL Charging Hub Koramangala" [ref=e326]
+              - cell "919.7 km" [ref=e327]
+              - cell "0 min" [ref=e328]
+              - cell "3513 min" [ref=e329]
+              - cell "-10836.4" [ref=e330]
+            - row "ABB Charging Hub Jayanagar 920.2 km 0 min 3515 min -10897.2" [ref=e331]:
+              - cell "ABB Charging Hub Jayanagar" [ref=e332]
+              - cell "920.2 km" [ref=e333]
+              - cell "0 min" [ref=e334]
+              - cell "3515 min" [ref=e335]
+              - cell "-10897.2" [ref=e336]
+            - row "EESL Charging Hub Electronic City 928.6 km 0 min 3547 min -10978.8" [ref=e337]:
+              - cell "EESL Charging Hub Electronic City" [ref=e338]
+              - cell "928.6 km" [ref=e339]
+              - cell "0 min" [ref=e340]
+              - cell "3547 min" [ref=e341]
+              - cell "-10978.8" [ref=e342]

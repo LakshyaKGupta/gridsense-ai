@@ -96,12 +96,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (!user) {
         setFirebaseUser(null);
-        if (!readPersistedSession()?.profile.isDemo) {
+        // Only clear state if there's no persisted session
+        if (!readPersistedSession()) {
           setToken(null);
           setEmail(null);
           setRole(null);
           setProfile(null);
-          clearPersistedSession();
         }
         setIsLoading(false);
         return;

@@ -1,0 +1,169 @@
+- generic [ref=e94]:
+  - banner [ref=e95]:
+    - generic [ref=e96]:
+      - link "EV Owner Charging Navigation and Timing Console" [ref=e97] [cursor=pointer]:
+        - /url: /
+        - img [ref=e99]
+        - generic [ref=e103]:
+          - paragraph [ref=e104]: EV Owner
+          - heading "Charging Navigation and Timing Console" [level=1] [ref=e105]
+      - generic [ref=e106]:
+        - link "Home" [ref=e107] [cursor=pointer]:
+          - /url: /
+        - link "Profile" [ref=e108] [cursor=pointer]:
+          - /url: /profile
+        - button "Sign out" [ref=e109] [cursor=pointer]:
+          - img [ref=e110]
+          - text: Sign out
+  - main [ref=e113]:
+    - generic [ref=e114]:
+      - generic [ref=e115]:
+        - generic [ref=e116]:
+          - generic [ref=e117]:
+            - paragraph [ref=e118]: Decision Guidance
+            - heading "Pick the lowest-friction charger and move the session out of peak load." [level=2] [ref=e119]
+            - paragraph [ref=e120]: Recommendations are generated from backend station status, route distance, queue pressure, and the XGBoost demand forecast for your current zone.
+          - generic [ref=e121]:
+            - paragraph [ref=e122]: Selected Station
+            - paragraph [ref=e123]: ABB Charging Hub Jayanagar
+        - generic [ref=e124]:
+          - paragraph [ref=e125]: Avoid 7-9 PM. Charge at 11 PM to reduce wait by 23%.
+          - paragraph [ref=e126]: Peak expected due to current network charging pattern and commercial trip turnover.
+          - generic [ref=e127]:
+            - generic [ref=e128]: 88% confidence from xgboost inference using real-time context.
+            - generic [ref=e129]: Projected 268 kW remains within the 640 kW zone envelope.
+        - generic [ref=e130]: Live location was outside the Bengaluru service area, so recommendations were anchored to central Bengaluru.
+      - generic [ref=e131]:
+        - paragraph [ref=e132]: Session Economics
+        - generic [ref=e133]:
+          - generic [ref=e134]:
+            - paragraph [ref=e135]: Target Energy
+            - paragraph [ref=e136]: 18.9 kWh
+          - generic [ref=e137]:
+            - generic [ref=e138]:
+              - paragraph [ref=e139]: Public Cost
+              - paragraph [ref=e140]: INR 369
+            - generic [ref=e141]:
+              - paragraph [ref=e142]: Session Time
+              - paragraph [ref=e143]: 28 min
+          - generic [ref=e144]:
+            - paragraph [ref=e145]: Peak expected due to evening demand surge and commercial trip turnover.
+            - paragraph [ref=e146]: Projected 342 kW remains within the 640 kW zone envelope.
+            - paragraph [ref=e147]: 88% confidence from xgboost inference using real-time context.
+    - generic [ref=e148]:
+      - generic [ref=e149]:
+        - generic [ref=e150]:
+          - paragraph [ref=e151]: Best Time to Charge
+          - img [ref=e152]
+        - paragraph [ref=e155]: 11 PM
+      - generic [ref=e156]:
+        - generic [ref=e157]:
+          - paragraph [ref=e158]: Route Duration
+          - img [ref=e159]
+        - paragraph [ref=e163]: 9 min
+      - generic [ref=e164]:
+        - generic [ref=e165]:
+          - paragraph [ref=e166]: Wait Saved
+          - img [ref=e167]
+        - paragraph [ref=e170]: 0 min
+      - generic [ref=e171]:
+        - generic [ref=e172]:
+          - paragraph [ref=e173]: Public vs Home
+          - img [ref=e174]
+        - paragraph [ref=e177]: +INR 214
+    - generic [ref=e178]:
+      - generic [ref=e179]:
+        - generic [ref=e180]:
+          - generic [ref=e181]:
+            - paragraph [ref=e182]: Station Map
+            - heading "Live route and station availability" [level=3] [ref=e183]
+          - img [ref=e184]
+        - generic [ref=e186]: The highlighted route always reflects the active station choice. Use the comparison list to switch between the fastest and the most cost-efficient stop.
+        - generic [ref=e188]:
+          - generic:
+            - region "Map" [ref=e189]
+            - button "Map marker" [ref=e190] [cursor=pointer]
+            - button "Map marker" [ref=e192] [cursor=pointer]:
+              - button "Select ABB Charging Hub Jayanagar" [ref=e193]:
+                - img [ref=e194]
+            - button "Map marker" [ref=e196] [cursor=pointer]:
+              - button "Select Tesla Charging Hub Indiranagar" [ref=e197]:
+                - img [ref=e198]
+            - button "Map marker" [ref=e200] [cursor=pointer]:
+              - button "Select ABL Charging Hub Koramangala" [ref=e201]:
+                - img [ref=e202]
+            - button "Map marker" [ref=e204] [cursor=pointer]:
+              - button "Select ChargePoint Whitefield" [ref=e205]:
+                - img [ref=e206]
+            - button "Map marker" [ref=e208] [cursor=pointer]:
+              - button "Select EESL Charging Hub Electronic City" [ref=e209]:
+                - img [ref=e210]
+          - generic [ref=e212]:
+            - button "Zoom in" [ref=e213] [cursor=pointer]
+            - button "Zoom out" [ref=e215] [cursor=pointer]
+            - button "Drag to rotate map, click to reset north" [ref=e217]
+      - generic [ref=e220]:
+        - generic [ref=e221]:
+          - generic [ref=e222]:
+            - paragraph [ref=e223]: User Workspace
+            - heading "Station choice and charging decisions" [level=3] [ref=e224]
+          - img [ref=e225]
+        - generic [ref=e228]:
+          - button "Top 3 Stations" [ref=e229] [cursor=pointer]
+          - button "Charge Strategy" [ref=e230] [cursor=pointer]
+          - button "Comparison" [ref=e231] [cursor=pointer]
+        - generic [ref=e232]:
+          - button "1 ABB Charging Hub Jayanagar Best Fit ABB • Moderate queue pressure but still serviceable for a planned stop. 4.8 km 37 min total" [ref=e233] [cursor=pointer]:
+            - generic [ref=e234]:
+              - generic [ref=e235]:
+                - generic [ref=e236]:
+                  - generic [ref=e237]: "1"
+                  - paragraph [ref=e238]: ABB Charging Hub Jayanagar
+                  - generic [ref=e239]: Best Fit
+                - paragraph [ref=e240]: ABB • Moderate queue pressure but still serviceable for a planned stop.
+              - generic [ref=e241]:
+                - paragraph [ref=e242]: 4.8 km
+                - paragraph [ref=e243]: 37 min total
+          - button "2 Tesla Charging Hub Indiranagar Tesla • Low queue pressure and strong capacity headroom. 5.1 km 37 min total" [ref=e244] [cursor=pointer]:
+            - generic [ref=e245]:
+              - generic [ref=e246]:
+                - generic [ref=e247]:
+                  - generic [ref=e248]: "2"
+                  - paragraph [ref=e249]: Tesla Charging Hub Indiranagar
+                - paragraph [ref=e250]: Tesla • Low queue pressure and strong capacity headroom.
+              - generic [ref=e251]:
+                - paragraph [ref=e252]: 5.1 km
+                - paragraph [ref=e253]: 37 min total
+          - button "3 ABL Charging Hub Koramangala ABL • Low queue pressure and strong capacity headroom. 6.0 km 41 min total" [ref=e254] [cursor=pointer]:
+            - generic [ref=e255]:
+              - generic [ref=e256]:
+                - generic [ref=e257]:
+                  - generic [ref=e258]: "3"
+                  - paragraph [ref=e259]: ABL Charging Hub Koramangala
+                - paragraph [ref=e260]: ABL • Low queue pressure and strong capacity headroom.
+              - generic [ref=e261]:
+                - paragraph [ref=e262]: 6.0 km
+                - paragraph [ref=e263]: 41 min total
+        - generic [ref=e264]:
+          - generic [ref=e265]:
+            - generic [ref=e266]:
+              - paragraph [ref=e267]: ABB Charging Hub Jayanagar
+              - paragraph [ref=e268]: Jayanagar • ABB
+            - generic [ref=e269]: YELLOW
+          - generic [ref=e270]:
+            - generic [ref=e271]:
+              - paragraph [ref=e272]: Current Load
+              - paragraph [ref=e273]: 180 / 300 kW
+            - generic [ref=e274]:
+              - paragraph [ref=e275]: Queue
+              - paragraph [ref=e276]: 1 min
+            - generic [ref=e277]:
+              - paragraph [ref=e278]: Route Provider
+              - paragraph [ref=e279]: osrm
+            - generic [ref=e280]:
+              - paragraph [ref=e281]: Battery Profile
+              - paragraph [ref=e282]: 45 kWh
+          - link "Open turn-by-turn directions" [ref=e283] [cursor=pointer]:
+            - /url: https://www.google.com/maps/dir/?api=1&origin=12.9716,77.5946&destination=12.9299,77.5826&travelmode=driving&dir_action=navigate
+            - img [ref=e284]
+            - text: Open turn-by-turn directions

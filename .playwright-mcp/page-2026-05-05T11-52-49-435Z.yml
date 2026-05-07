@@ -1,0 +1,229 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e89]:
+    - banner [ref=e90]:
+      - generic [ref=e91]:
+        - generic [ref=e93]:
+          - img [ref=e95]
+          - generic [ref=e100]:
+            - paragraph [ref=e101]: BESCOM Operator
+            - heading "Grid Control and Planning Console" [level=1] [ref=e102]
+        - generic [ref=e103]:
+          - link "Profile" [ref=e104] [cursor=pointer]:
+            - /url: /profile
+          - button "Sign out" [ref=e105] [cursor=pointer]:
+            - img [ref=e106]
+            - text: Sign out
+    - main [ref=e109]:
+      - generic [ref=e110]:
+        - generic [ref=e111]:
+          - generic [ref=e112]:
+            - generic [ref=e113]:
+              - paragraph [ref=e114]: Operational Forecast
+              - heading "Prevent overload before evening peak" [level=2] [ref=e115]
+              - paragraph [ref=e116]: Forecasts are generated from the backend XGBoost model using ordered features, zone type encoding, and live time context. The selected zone is Whitefield.
+            - generic [ref=e117]:
+              - paragraph [ref=e118]: Scenario
+              - paragraph [ref=e119]: Normal
+          - generic [ref=e120]:
+            - button "Normal" [ref=e121] [cursor=pointer]
+            - button "Evening Peak" [ref=e122] [cursor=pointer]
+            - button "High Growth" [ref=e123] [cursor=pointer]
+            - button "Outage" [ref=e124] [cursor=pointer]
+        - generic [ref=e125]:
+          - paragraph [ref=e126]: Grid Stress Indicator
+          - generic [ref=e127]:
+            - generic [ref=e128]:
+              - paragraph [ref=e129]: Predicted Load
+              - paragraph [ref=e130]: 97 kW
+            - generic [ref=e131]:
+              - generic [ref=e132]:
+                - paragraph [ref=e133]: Capacity
+                - paragraph [ref=e134]: 600 kW
+              - generic [ref=e135]:
+                - paragraph [ref=e136]: Status
+                - paragraph [ref=e137]: STABLE
+            - generic [ref=e138]:
+              - paragraph [ref=e139]: Peak expected due to current network charging pattern and industrial fleet concentration.
+              - paragraph [ref=e140]: Projected 97 kW remains within the 600 kW zone envelope.
+              - paragraph [ref=e141]: 88% confidence from xgboost inference using real-time context.
+      - generic [ref=e142]:
+        - generic [ref=e143]:
+          - generic [ref=e144]:
+            - paragraph [ref=e145]: Peak Delta
+            - img [ref=e146]
+          - paragraph [ref=e149]: "-503 kW"
+        - generic [ref=e150]:
+          - generic [ref=e151]:
+            - paragraph [ref=e152]: Peak Hour
+            - img [ref=e153]
+          - paragraph [ref=e156]: 19:22
+        - generic [ref=e157]:
+          - generic [ref=e158]:
+            - paragraph [ref=e159]: Model
+            - img [ref=e160]
+          - paragraph [ref=e163]: XGBoost
+      - generic [ref=e164]:
+        - generic [ref=e165]:
+          - generic [ref=e166]:
+            - generic [ref=e167]:
+              - paragraph [ref=e168]: Zone Demand Forecast
+              - heading "Whitefield 24-hour forecast" [level=3] [ref=e169]
+            - generic [ref=e170]:
+              - paragraph [ref=e171]: Peak highlight
+              - paragraph [ref=e172]: 123 kW at 19:22
+          - img [ref=e176]:
+            - generic [ref=e180]:
+              - generic [ref=e182]: 17:22
+              - generic [ref=e184]: 18:22
+              - generic [ref=e186]: 19:22
+              - generic [ref=e188]: 20:22
+              - generic [ref=e190]: 21:22
+              - generic [ref=e192]: 22:22
+              - generic [ref=e194]: 23:22
+              - generic [ref=e196]: 00:22
+              - generic [ref=e198]: 01:22
+              - generic [ref=e200]: 02:22
+              - generic [ref=e202]: 03:22
+              - generic [ref=e204]: 04:22
+              - generic [ref=e206]: 05:22
+              - generic [ref=e208]: 06:22
+              - generic [ref=e210]: 07:22
+              - generic [ref=e212]: 08:22
+              - generic [ref=e214]: 09:22
+              - generic [ref=e216]: 10:22
+              - generic [ref=e218]: 11:22
+              - generic [ref=e220]: 12:22
+              - generic [ref=e222]: 13:22
+              - generic [ref=e224]: 14:22
+              - generic [ref=e226]: 15:22
+              - generic [ref=e228]: 16:22
+            - generic [ref=e230]:
+              - generic [ref=e232]: "0"
+              - generic [ref=e234]: "35"
+              - generic [ref=e236]: "70"
+              - generic [ref=e238]: "105"
+              - generic [ref=e240]: "140"
+        - generic [ref=e253]:
+          - generic [ref=e254]:
+            - generic [ref=e255]:
+              - paragraph [ref=e256]: Zone Network
+              - heading "Bengaluru load topology" [level=3] [ref=e257]
+            - img [ref=e258]
+          - generic [ref=e262]:
+            - generic:
+              - region "Map" [ref=e263]
+              - button "Map marker" [ref=e264] [cursor=pointer]:
+                - button "Select Indiranagar" [ref=e265]
+              - button "Map marker" [ref=e266] [cursor=pointer]:
+                - button "Select Koramangala" [ref=e267]
+              - button "Map marker" [ref=e268] [cursor=pointer]:
+                - button "Select Whitefield" [ref=e269]
+              - button "Map marker" [ref=e270] [cursor=pointer]:
+                - button "Select Electronic City" [ref=e271]
+              - button "Map marker" [ref=e272] [cursor=pointer]:
+                - button "Select Jayanagar" [ref=e273]
+              - button "Map marker" [ref=e274] [cursor=pointer]:
+                - button "Select MG Road" [ref=e275]
+              - button "Map marker" [ref=e276] [cursor=pointer]:
+                - button "Select Manyata Tech Park" [ref=e277]
+              - button "Map marker" [ref=e278] [cursor=pointer]:
+                - button "Select Yelahanka" [ref=e279]
+              - button "Map marker" [ref=e280] [cursor=pointer]:
+                - button "Select JP Nagar" [ref=e281]
+              - button "Map marker" [ref=e282] [cursor=pointer]:
+                - button "Select Hebbal" [ref=e283]
+              - button "Map marker" [ref=e284] [cursor=pointer]:
+                - button "Select Banashankari" [ref=e285]
+              - button "Map marker" [ref=e286] [cursor=pointer]:
+                - button "Select Airport Corridor" [ref=e287]
+            - generic [ref=e288]:
+              - button "Zoom in" [ref=e289] [cursor=pointer]
+              - button "Zoom out" [ref=e291] [cursor=pointer]
+              - button "Drag to rotate map, click to reset north" [ref=e293]
+      - generic [ref=e296]:
+        - generic [ref=e297]:
+          - paragraph [ref=e298]: Zone Selector
+          - generic [ref=e299]:
+            - button "Indiranagar residential zone • 600 kW limit" [ref=e300] [cursor=pointer]:
+              - generic [ref=e301]:
+                - paragraph [ref=e302]: Indiranagar
+                - img [ref=e303]
+              - paragraph [ref=e305]: residential zone • 600 kW limit
+            - button "Koramangala commercial zone • 680 kW limit" [ref=e306] [cursor=pointer]:
+              - generic [ref=e307]:
+                - paragraph [ref=e308]: Koramangala
+                - img [ref=e309]
+              - paragraph [ref=e311]: commercial zone • 680 kW limit
+            - button "Whitefield industrial zone • 600 kW limit" [ref=e312] [cursor=pointer]:
+              - generic [ref=e313]:
+                - paragraph [ref=e314]: Whitefield
+                - img [ref=e315]
+              - paragraph [ref=e317]: industrial zone • 600 kW limit
+            - button "Electronic City industrial zone • 720 kW limit" [ref=e318] [cursor=pointer]:
+              - generic [ref=e319]:
+                - paragraph [ref=e320]: Electronic City
+                - img [ref=e321]
+              - paragraph [ref=e323]: industrial zone • 720 kW limit
+            - button "Jayanagar residential zone • 560 kW limit" [ref=e324] [cursor=pointer]:
+              - generic [ref=e325]:
+                - paragraph [ref=e326]: Jayanagar
+                - img [ref=e327]
+              - paragraph [ref=e329]: residential zone • 560 kW limit
+            - button "MG Road commercial zone • 640 kW limit" [ref=e330] [cursor=pointer]:
+              - generic [ref=e331]:
+                - paragraph [ref=e332]: MG Road
+                - img [ref=e333]
+              - paragraph [ref=e335]: commercial zone • 640 kW limit
+            - button "Manyata Tech Park industrial zone • 700 kW limit" [ref=e336] [cursor=pointer]:
+              - generic [ref=e337]:
+                - paragraph [ref=e338]: Manyata Tech Park
+                - img [ref=e339]
+              - paragraph [ref=e341]: industrial zone • 700 kW limit
+            - button "Yelahanka residential zone • 520 kW limit" [ref=e342] [cursor=pointer]:
+              - generic [ref=e343]:
+                - paragraph [ref=e344]: Yelahanka
+                - img [ref=e345]
+              - paragraph [ref=e347]: residential zone • 520 kW limit
+            - button "JP Nagar residential zone • 540 kW limit" [ref=e348] [cursor=pointer]:
+              - generic [ref=e349]:
+                - paragraph [ref=e350]: JP Nagar
+                - img [ref=e351]
+              - paragraph [ref=e353]: residential zone • 540 kW limit
+            - button "Hebbal commercial zone • 620 kW limit" [ref=e354] [cursor=pointer]:
+              - generic [ref=e355]:
+                - paragraph [ref=e356]: Hebbal
+                - img [ref=e357]
+              - paragraph [ref=e359]: commercial zone • 620 kW limit
+            - button "Banashankari residential zone • 500 kW limit" [ref=e360] [cursor=pointer]:
+              - generic [ref=e361]:
+                - paragraph [ref=e362]: Banashankari
+                - img [ref=e363]
+              - paragraph [ref=e365]: residential zone • 500 kW limit
+            - button "Airport Corridor commercial zone • 760 kW limit" [ref=e366] [cursor=pointer]:
+              - generic [ref=e367]:
+                - paragraph [ref=e368]: Airport Corridor
+                - img [ref=e369]
+              - paragraph [ref=e371]: commercial zone • 760 kW limit
+        - generic [ref=e372]:
+          - generic [ref=e373]:
+            - generic [ref=e374]:
+              - paragraph [ref=e375]: Planning Insights
+              - heading "Infrastructure actions" [level=3] [ref=e376]
+            - img [ref=e377]
+          - generic [ref=e379]:
+            - article [ref=e380]:
+              - heading "Add 3 chargers in Bronx" [level=4] [ref=e381]
+              - paragraph [ref=e382]: High demand (130.4 kW), growth rate 10.0, grid stress 0.00, confidence 88%
+              - paragraph [ref=e383]: Expands coverage in the highest-pressure zone and reduces spillover into adjacent feeders.
+              - paragraph [ref=e384]: 95%
+            - article [ref=e385]:
+              - heading "Add 3 chargers in Queens" [level=4] [ref=e386]
+              - paragraph [ref=e387]: High demand (110.7 kW), growth rate 10.0, grid stress 0.00, confidence 88%
+              - paragraph [ref=e388]: Expands coverage in the highest-pressure zone and reduces spillover into adjacent feeders.
+              - paragraph [ref=e389]: 95%
+            - article [ref=e390]:
+              - heading "Add 3 chargers in Downtown" [level=4] [ref=e391]
+              - paragraph [ref=e392]: High demand (130.4 kW), growth rate 10.0, grid stress 0.00, confidence 88%
+              - paragraph [ref=e393]: Expands coverage in the highest-pressure zone and reduces spillover into adjacent feeders.
+              - paragraph [ref=e394]: 95%
+  - generic [ref=e395]: "0"

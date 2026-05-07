@@ -1,0 +1,154 @@
+- generic [ref=e90]:
+  - banner [ref=e91]:
+    - generic [ref=e92]:
+      - generic [ref=e93]:
+        - img [ref=e95]
+        - generic [ref=e99]:
+          - paragraph [ref=e100]: EV Owner
+          - heading "Charging navigation and timing" [level=1] [ref=e101]
+      - generic [ref=e102]:
+        - link "Profile" [ref=e103] [cursor=pointer]:
+          - /url: /profile
+        - button "Sign out" [ref=e104] [cursor=pointer]:
+          - img [ref=e105]
+          - text: Sign out
+  - main [ref=e108]:
+    - generic [ref=e109]:
+      - generic [ref=e110]:
+        - paragraph [ref=e111]: Navigation Assistant
+        - heading "Route to the best station, then shift charging out of the peak." [level=2] [ref=e112]
+        - paragraph [ref=e113]: This view uses live station locations, route distance, queue estimates, and backend demand predictions for your nearest zone. No charging-time advice is generated client-side.
+        - generic [ref=e114]:
+          - paragraph [ref=e115]: Avoid 7-9 PM. Charge at 11 PM to reduce wait by 23%.
+          - paragraph [ref=e116]: Peak expected due to current network charging pattern and commercial trip turnover.
+          - paragraph [ref=e117]: Projected 268 kW remains within the 640 kW zone envelope.
+          - paragraph [ref=e118]: 88% confidence from xgboost inference using real-time context.
+      - generic [ref=e119]:
+        - paragraph [ref=e120]: Trip Context
+        - generic [ref=e121]:
+          - generic [ref=e122]:
+            - paragraph [ref=e123]: Nearest Station
+            - paragraph [ref=e124]: Ashok充电站 Jayanagar
+            - paragraph [ref=e125]: Jayanagar
+          - generic [ref=e126]:
+            - generic [ref=e127]:
+              - paragraph [ref=e128]: Wait Time
+              - paragraph [ref=e129]: 0 min
+            - generic [ref=e130]:
+              - paragraph [ref=e131]: Distance
+              - paragraph [ref=e132]: 6.4 km
+          - generic [ref=e133]:
+            - paragraph [ref=e134]: Peak expected due to current network charging pattern and commercial trip turnover.
+            - paragraph [ref=e135]: Projected 314 kW remains within the 640 kW zone envelope.
+            - paragraph [ref=e136]: 88% confidence from xgboost inference using real-time context.
+    - generic [ref=e137]:
+      - generic [ref=e138]:
+        - generic [ref=e139]:
+          - paragraph [ref=e140]: Best Time to Charge
+          - img [ref=e141]
+        - paragraph [ref=e144]: 11 PM
+      - generic [ref=e145]:
+        - generic [ref=e146]:
+          - paragraph [ref=e147]: Route Duration
+          - img [ref=e148]
+        - paragraph [ref=e152]: 9 min
+      - generic [ref=e153]:
+        - generic [ref=e154]:
+          - paragraph [ref=e155]: Battery Profile
+          - img [ref=e156]
+        - paragraph [ref=e160]: 45 kWh
+      - generic [ref=e161]:
+        - generic [ref=e162]:
+          - paragraph [ref=e163]: Prediction Window
+          - img [ref=e164]
+        - paragraph [ref=e167]: 280-348 kW
+    - generic [ref=e168]:
+      - generic [ref=e169]:
+        - generic [ref=e170]:
+          - generic [ref=e171]:
+            - paragraph [ref=e172]: Station Map
+            - heading "Route and station availability" [level=3] [ref=e173]
+          - img [ref=e174]
+        - generic [ref=e177]:
+          - generic:
+            - region "Map" [ref=e178]
+            - button "Map marker" [ref=e179] [cursor=pointer]
+            - button "Map marker" [ref=e181] [cursor=pointer]:
+              - button "Select Ashok充电站 Jayanagar" [ref=e182]:
+                - img [ref=e183]
+            - button "Map marker" [ref=e185] [cursor=pointer]:
+              - button "Select Tesla超级充电站 Indiranagar" [ref=e186]:
+                - img [ref=e187]
+            - button "Map marker" [ref=e189] [cursor=pointer]:
+              - button "Select EV充电站 Koramangala" [ref=e190]:
+                - img [ref=e191]
+            - button "Map marker" [ref=e193] [cursor=pointer]:
+              - button "Select ChargePoint Whitefield" [ref=e194]:
+                - img [ref=e195]
+            - button "Map marker" [ref=e197] [cursor=pointer]:
+              - button "Select EESL充电站 Electronic City" [ref=e198]:
+                - img [ref=e199]
+          - generic [ref=e201]:
+            - button "Zoom in" [ref=e202] [cursor=pointer]
+            - button "Zoom out" [ref=e204] [cursor=pointer]
+            - button "Drag to rotate map, click to reset north" [ref=e206]
+      - generic [ref=e209]:
+        - generic [ref=e210]:
+          - generic [ref=e211]:
+            - paragraph [ref=e212]: Nearby Stations
+            - heading "Pick the lowest-friction stop" [level=3] [ref=e213]
+          - img [ref=e214]
+        - generic [ref=e217]:
+          - button "Ashok充电站 Jayanagar Jayanagar • ABB 4.8 km 0 min wait" [ref=e218] [cursor=pointer]:
+            - generic [ref=e219]:
+              - generic [ref=e220]:
+                - paragraph [ref=e221]: Ashok充电站 Jayanagar
+                - paragraph [ref=e222]: Jayanagar • ABB
+              - generic [ref=e223]:
+                - paragraph [ref=e224]: 4.8 km
+                - paragraph [ref=e225]: 0 min wait
+          - button "Tesla超级充电站 Indiranagar Indiranagar • Tesla 5.1 km 0 min wait" [ref=e226] [cursor=pointer]:
+            - generic [ref=e227]:
+              - generic [ref=e228]:
+                - paragraph [ref=e229]: Tesla超级充电站 Indiranagar
+                - paragraph [ref=e230]: Indiranagar • Tesla
+              - generic [ref=e231]:
+                - paragraph [ref=e232]: 5.1 km
+                - paragraph [ref=e233]: 0 min wait
+          - button "EV充电站 Koramangala Koramangala • ABL 6.0 km 0 min wait" [ref=e234] [cursor=pointer]:
+            - generic [ref=e235]:
+              - generic [ref=e236]:
+                - paragraph [ref=e237]: EV充电站 Koramangala
+                - paragraph [ref=e238]: Koramangala • ABL
+              - generic [ref=e239]:
+                - paragraph [ref=e240]: 6.0 km
+                - paragraph [ref=e241]: 0 min wait
+          - button "ChargePoint Whitefield Whitefield • ChargePoint 16.8 km 0 min wait" [ref=e242] [cursor=pointer]:
+            - generic [ref=e243]:
+              - generic [ref=e244]:
+                - paragraph [ref=e245]: ChargePoint Whitefield
+                - paragraph [ref=e246]: Whitefield • ChargePoint
+              - generic [ref=e247]:
+                - paragraph [ref=e248]: 16.8 km
+                - paragraph [ref=e249]: 0 min wait
+          - button "EESL充电站 Electronic City Electronic City • EESL 17.2 km 0 min wait" [ref=e250] [cursor=pointer]:
+            - generic [ref=e251]:
+              - generic [ref=e252]:
+                - paragraph [ref=e253]: EESL充电站 Electronic City
+                - paragraph [ref=e254]: Electronic City • EESL
+              - generic [ref=e255]:
+                - paragraph [ref=e256]: 17.2 km
+                - paragraph [ref=e257]: 0 min wait
+        - generic [ref=e258]:
+          - paragraph [ref=e259]: Ashok充电站 Jayanagar
+          - generic [ref=e260]:
+            - generic [ref=e261]:
+              - paragraph [ref=e262]: Current Load
+              - paragraph [ref=e263]: 166 / 300 kW
+            - generic [ref=e264]:
+              - paragraph [ref=e265]: Route Provider
+              - paragraph [ref=e266]: osrm
+          - link "Open turn-by-turn directions" [ref=e267] [cursor=pointer]:
+            - /url: https://www.google.com/maps/dir/?api=1&origin=12.9716,77.5946&destination=12.9299,77.5826&travelmode=driving&dir_action=navigate
+            - img [ref=e268]
+            - text: Open turn-by-turn directions

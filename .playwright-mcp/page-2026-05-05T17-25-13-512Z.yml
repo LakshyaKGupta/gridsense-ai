@@ -1,0 +1,292 @@
+- generic [ref=e2]:
+  - navigation [ref=e286]:
+    - link "GS GridSense AI" [ref=e287] [cursor=pointer]:
+      - /url: /
+      - generic [ref=e288]: GS
+      - generic [ref=e289]: GridSense AI
+    - list [ref=e290]:
+      - listitem [ref=e291]:
+        - link "Problem" [ref=e292]:
+          - /url: "#problem"
+      - listitem [ref=e293]:
+        - link "Platform" [ref=e294]:
+          - /url: "#features"
+      - listitem [ref=e295]:
+        - link "Workflow" [ref=e296]:
+          - /url: "#how"
+      - listitem [ref=e297]:
+        - link "Live Demo" [ref=e298]:
+          - /url: "#demo"
+      - listitem [ref=e299]:
+        - link "Impact" [ref=e300]:
+          - /url: "#metrics"
+      - listitem [ref=e301]:
+        - link "Get Started" [ref=e302]:
+          - /url: "#cta"
+    - generic [ref=e303]:
+      - link "Dashboard" [ref=e304]:
+        - /url: /dashboard
+      - button "Logout" [ref=e305]
+  - generic [ref=e306]:
+    - generic:
+      - generic:
+        - generic:
+          - img
+        - generic:
+          - generic: +96%
+          - generic: Load Spike
+    - generic:
+      - generic:
+        - generic:
+          - img
+        - generic:
+          - generic: 247 units
+          - generic: EV Charging
+    - generic:
+      - generic:
+        - generic:
+          - img
+        - generic:
+          - generic: 24h ahead
+          - generic: AI Forecast
+    - generic:
+      - generic:
+        - generic:
+          - img
+        - generic:
+          - generic: 92%
+          - generic: Accuracy
+    - generic:
+      - generic:
+        - generic:
+          - img
+        - generic:
+          - generic: "198"
+          - generic: Zones
+    - generic:
+      - generic:
+        - generic:
+          - img
+        - generic:
+          - generic: −23 kW
+          - generic: Peak Reduced
+    - generic [ref=e308]:
+      - heading "Prevent Grid Overload Before It Happens." [level=1] [ref=e309]:
+        - text: Prevent Grid Overload
+        - generic [ref=e310]: Before It Happens.
+      - paragraph [ref=e312]: AI-driven EV demand prediction and charging optimization for modern cities.
+      - generic [ref=e313]:
+        - link "View Live Simulation →" [ref=e314]:
+          - /url: /dashboard
+        - link "Explore Architecture" [ref=e316]:
+          - /url: /dashboard
+      - generic [ref=e317]:
+        - generic [ref=e318]:
+          - generic [ref=e319]: ↓25%
+          - generic [ref=e320]: Peak Reduction
+        - generic [ref=e321]:
+          - generic [ref=e322]: ↑85%
+          - generic [ref=e323]: Forecast Accuracy
+        - generic [ref=e324]:
+          - generic [ref=e325]: ≤15%
+          - generic [ref=e326]: Error Margin
+        - generic [ref=e327]:
+          - generic [ref=e328]: "0"
+          - generic [ref=e329]: Hardware Changes
+    - generic [ref=e333]: Scroll to Explore
+  - generic [ref=e335]:
+    - generic [ref=e336]:
+      - generic [ref=e337]: The Crisis
+      - heading "EV Growth Is Exploding. Grids Are Breaking." [level=2] [ref=e338]:
+        - text: EV Growth Is Exploding.
+        - text: Grids Are Breaking.
+      - paragraph [ref=e339]: Cities worldwide face grid collapse as EV adoption surges. Unmanaged charging creates demand spikes that overload infrastructure built for the past century.
+    - generic [ref=e340]:
+      - generic [ref=e343]:
+        - img [ref=e345]
+        - generic [ref=e348]:
+          - heading "Evening Peak Overload" [level=3] [ref=e349]
+          - paragraph [ref=e350]: Grid infrastructure faces immense strain during evening hours as EVs plug in simultaneously after work. This creates an unmanageable 96% peak load that risks transformer blowouts.
+      - generic [ref=e353]:
+        - img [ref=e355]
+        - generic [ref=e358]:
+          - heading "Unplanned Charging Behavior" [level=3] [ref=e359]
+          - paragraph [ref=e360]: Without intelligence, charging happens exactly when power is most expensive and grids are most stressed. We lack automated systems to shift non-urgent loads to off-peak hours.
+      - generic [ref=e363]:
+        - img [ref=e365]
+        - generic [ref=e367]:
+          - heading "Inefficient Infrastructure" [level=3] [ref=e368]
+          - paragraph [ref=e369]: Governments deploy charging stations blindly based on guesswork rather than data. This leads to underutilized stations in some zones and massive queues in others.
+  - generic [ref=e371]:
+    - generic [ref=e372]:
+      - generic [ref=e373]: Platform
+      - heading "Everything You Need to Manage the Grid" [level=2] [ref=e374]:
+        - text: Everything You Need to
+        - text: Manage the Grid
+      - paragraph [ref=e375]: A complete suite of AI-powered tools for monitoring, forecasting, and optimizing EV charging infrastructure.
+    - generic [ref=e376]:
+      - generic [ref=e377]:
+        - img [ref=e379]
+        - heading "Real-Time Grid Monitoring" [level=3] [ref=e381]
+        - paragraph [ref=e382]: Live tracking of demand across all zones with sub-second updates. See exactly where strain is building before it becomes a crisis.
+      - generic [ref=e383]:
+        - img [ref=e385]
+        - heading "AI Demand Forecasting" [level=3] [ref=e386]
+        - paragraph [ref=e387]: Proprietary ML models predict load spikes 24 hours ahead with 92% accuracy. Schedule charging during off-peak hours automatically.
+      - generic [ref=e388]:
+        - img [ref=e390]
+        - heading "Smart Station Routing" [level=3] [ref=e392]
+        - paragraph [ref=e393]: Direct drivers to the optimal station based on distance, wait time, and real-time load. No more guessing or wasted trips.
+      - generic [ref=e394]:
+        - img [ref=e396]
+        - heading "Zone Overload Protection" [level=3] [ref=e398]
+        - paragraph [ref=e399]: Automatic alerts and recommendations when zones approach capacity. Proactive strain management before blackouts.
+      - generic [ref=e400]:
+        - img [ref=e402]
+        - heading "Infrastructure ROI Calculator" [level=3] [ref=e404]
+        - paragraph [ref=e405]: Data-driven recommendations for where to build next. Maximize utilization and minimize investment risk.
+      - generic [ref=e406]:
+        - img [ref=e408]
+        - heading "Flexible Policy Controls" [level=3] [ref=e411]
+        - paragraph [ref=e412]: Adjust adoption rates and simulation parameters on the fly. Test policy impacts before implementation.
+  - generic [ref=e413]:
+    - generic [ref=e414]:
+      - generic [ref=e415]: How It Works
+      - heading "Three Steps to Grid Salvation" [level=2] [ref=e416]
+      - paragraph [ref=e417]: Pure software intelligence. No wires touched. Deploy in hours.
+    - generic [ref=e419]:
+      - generic [ref=e420]:
+        - img [ref=e422]
+        - heading "1. Predict Demand" [level=3] [ref=e430]
+        - paragraph [ref=e431]: AI forecasts EV charging load by zone with a 24-hour horizon, predicting peak times with ≤15% error margin.
+      - generic [ref=e432]:
+        - img [ref=e434]
+        - heading "2. Optimize Charging" [level=3] [ref=e436]
+        - paragraph [ref=e437]: Linear programming algorithms automatically shift non-urgent charging sessions to off-peak windows.
+      - generic [ref=e438]:
+        - img [ref=e440]
+        - heading "3. Plan Infrastructure" [level=3] [ref=e442]
+        - paragraph [ref=e443]: Spatial clustering algorithms identify the precise optimal locations for new physical charging stations.
+  - generic [ref=e445]:
+    - generic [ref=e446]:
+      - generic [ref=e447]: Interactive Demo
+      - heading "Experience the Intelligence" [level=2] [ref=e448]
+      - paragraph [ref=e449]: Interact with a live simulation of Bengaluru's grid, featuring real-time data, predictive insights, and AI-driven load shifting.
+    - link "Launch Platform" [ref=e484] [cursor=pointer]:
+      - /url: /login?mode=login
+      - text: Launch Platform
+      - img [ref=e485]
+  - generic [ref=e488]:
+    - generic [ref=e489]:
+      - generic [ref=e490]: Proven Results
+      - heading "System Impact" [level=2] [ref=e491]
+      - paragraph [ref=e492]: Measurable improvements in grid stability and operational costs.
+    - generic [ref=e493]:
+      - generic [ref=e494]:
+        - img [ref=e496]
+        - generic [ref=e499]: 0%
+        - generic [ref=e500]: Peak Load Reduced
+      - generic [ref=e501]:
+        - img [ref=e503]
+        - generic [ref=e505]: 0%
+        - generic [ref=e506]: Forecast Accuracy
+      - generic [ref=e507]:
+        - img [ref=e509]
+        - generic [ref=e511]: 0%
+        - generic [ref=e512]: Cost Savings
+  - generic [ref=e515]:
+    - generic [ref=e516]: Ready to Transform
+    - heading "Start Optimizing Your Grid Today" [level=2] [ref=e517]:
+      - text: Start Optimizing
+      - text: Your Grid Today
+    - paragraph [ref=e518]: Deploy the decision layer fast, connect live forecasts, and guide both operators and EV drivers from a single control surface.
+    - generic [ref=e519]:
+      - link "Open Dashboard →" [ref=e521]:
+        - /url: /dashboard
+      - link "Inspect Backend Logic" [ref=e523]:
+        - /url: /dashboard
+    - generic [ref=e524]:
+      - generic [ref=e525]:
+        - generic [ref=e526]: <500ms
+        - generic [ref=e527]: Response Time
+      - generic [ref=e528]:
+        - generic [ref=e529]: 24h
+        - generic [ref=e530]: Forecast Horizon
+      - generic [ref=e531]:
+        - generic [ref=e532]: "2"
+        - generic [ref=e533]: User Journeys
+  - contentinfo [ref=e534]:
+    - generic [ref=e535]:
+      - generic [ref=e536]:
+        - generic [ref=e537]:
+          - generic [ref=e538]:
+            - generic [ref=e539]: GS
+            - generic [ref=e540]: GridSense AI
+          - paragraph [ref=e541]: AI-powered EV charging optimization for modern cities. Zero hardware changes.
+          - generic [ref=e542]:
+            - generic [ref=e543]: 𝕏
+            - generic [ref=e544]: in
+            - generic [ref=e545]: gh
+        - generic [ref=e546]:
+          - generic [ref=e547]: Product
+          - generic [ref=e548]:
+            - link "Live Demo" [ref=e549]:
+              - /url: "#"
+            - link "Metrics" [ref=e550]:
+              - /url: "#"
+            - link "Use Cases" [ref=e551]:
+              - /url: "#"
+            - link "How It Works" [ref=e552]:
+              - /url: "#"
+            - link "ROI Calculator" [ref=e553]:
+              - /url: "#"
+        - generic [ref=e554]:
+          - generic [ref=e555]: Platform
+          - generic [ref=e556]:
+            - link "Demand Forecasting" [ref=e557]:
+              - /url: "#"
+            - link "Schedule Optimizer" [ref=e558]:
+              - /url: "#"
+            - link "Zone Intelligence" [ref=e559]:
+              - /url: "#"
+            - link "Infrastructure Scorer" [ref=e560]:
+              - /url: "#"
+            - link "API Reference" [ref=e561]:
+              - /url: "#"
+        - generic [ref=e562]:
+          - generic [ref=e563]: Company
+          - generic [ref=e564]:
+            - link "About GridSense" [ref=e565]:
+              - /url: "#"
+            - link "Research" [ref=e566]:
+              - /url: "#"
+            - link "Blog" [ref=e567]:
+              - /url: "#"
+            - link "Careers" [ref=e568]:
+              - /url: "#"
+            - link "Contact Us" [ref=e569]:
+              - /url: "#"
+        - generic [ref=e570]:
+          - generic [ref=e571]: Legal
+          - generic [ref=e572]:
+            - link "Privacy Policy" [ref=e573]:
+              - /url: "#"
+            - link "Terms of Service" [ref=e574]:
+              - /url: "#"
+            - link "Data Processing (DPA)" [ref=e575]:
+              - /url: "#"
+            - link "Cookie Policy" [ref=e576]:
+              - /url: "#"
+            - link "Security" [ref=e577]:
+              - /url: "#"
+      - generic [ref=e578]:
+        - generic [ref=e579]: © 2026 GridSense AI · BESCOM EV Track · v1.0 · Built for India
+        - generic [ref=e580]:
+          - link "Privacy Policy" [ref=e581]:
+            - /url: "#"
+          - link "Terms" [ref=e582]:
+            - /url: "#"
+          - link "Data Processing" [ref=e583]:
+            - /url: "#"
+          - link "Cookies" [ref=e584]:
+            - /url: "#"

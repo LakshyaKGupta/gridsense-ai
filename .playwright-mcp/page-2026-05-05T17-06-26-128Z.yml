@@ -1,0 +1,92 @@
+- generic [ref=e305]:
+  - generic [ref=e306]:
+    - button "Back to Home" [ref=e307] [cursor=pointer]:
+      - img [ref=e308]
+      - text: Back to Home
+    - generic [ref=e310]:
+      - img [ref=e311]
+      - text: GridSense AI
+    - heading "Charge Smarter, Avoid the Queue" [level=1] [ref=e391]
+    - paragraph [ref=e314]: Get to the best charging station faster with route guidance, queue awareness, and charging-time recommendations tuned to Bengaluru demand patterns.
+    - generic [ref=e315]:
+      - generic [ref=e392]:
+        - paragraph [ref=e393]: User view
+        - paragraph [ref=e394]: Live route + queue
+      - generic [ref=e395]:
+        - paragraph [ref=e396]: Trip support
+        - paragraph [ref=e397]: Cost and wait comparison
+      - generic [ref=e322]:
+        - paragraph [ref=e323]: AI output
+        - paragraph [ref=e324]: Best time to charge
+  - generic [ref=e325]:
+    - generic [ref=e326]:
+      - generic [ref=e327]:
+        - paragraph [ref=e328]: System Gateway
+        - heading "Create account" [level=2] [ref=e329]
+      - img [ref=e398]
+    - generic [ref=e336]:
+      - button "BESCOM Operator Monitor grid load, forecast demand, and plan infrastructure" [ref=e337] [cursor=pointer]:
+        - generic [ref=e338]:
+          - img [ref=e340]
+          - generic [ref=e345]:
+            - paragraph [ref=e346]: BESCOM Operator
+            - paragraph [ref=e347]: Monitor grid load, forecast demand, and plan infrastructure
+      - button "EV Owner Find stations, avoid queues, and optimize charging time" [active] [ref=e348] [cursor=pointer]:
+        - generic [ref=e349]:
+          - img [ref=e351]
+          - generic [ref=e355]:
+            - paragraph [ref=e356]: EV Owner
+            - paragraph [ref=e357]: Find stations, avoid queues, and optimize charging time
+    - generic [ref=e358]:
+      - button "Login" [ref=e359] [cursor=pointer]
+      - button "Sign up" [ref=e360] [cursor=pointer]
+    - generic [ref=e361]:
+      - generic [ref=e402]:
+        - generic [ref=e403]:
+          - generic [ref=e404]: Name
+          - textbox "Name" [ref=e405]:
+            - /placeholder: Full name
+        - generic [ref=e406]:
+          - generic [ref=e407]: Email
+          - textbox "Email" [ref=e408]:
+            - /placeholder: you@company.com
+        - generic [ref=e409]:
+          - generic [ref=e410]: Password
+          - textbox "Password" [ref=e411]:
+            - /placeholder: Enter password
+        - generic [ref=e412]:
+          - generic [ref=e413]: Vehicle Model
+          - combobox "Vehicle Model" [ref=e414]:
+            - option "Ather 450X"
+            - option "Tata Nexon EV" [selected]
+            - option "MG ZS EV"
+            - option "Mahindra XUV400"
+            - option "BYD Atto 3"
+            - option "Other EV"
+        - generic [ref=e415]:
+          - generic [ref=e416]: Battery Capacity (kWh)
+          - spinbutton "Battery Capacity (kWh)" [ref=e417]: "45"
+        - generic [ref=e418]:
+          - generic [ref=e419]: Home Charging Access
+          - generic [ref=e420]:
+            - button "Home Charging Access No" [ref=e421] [cursor=pointer]: "Yes"
+            - button "No" [ref=e422] [cursor=pointer]
+        - generic [ref=e423]:
+          - generic [ref=e424]: Typical Charging Time
+          - generic [ref=e425]:
+            - button "Typical Charging Time Night Flexible" [ref=e426] [cursor=pointer]: Evening
+            - button "Night" [ref=e427] [cursor=pointer]
+            - button "Flexible" [ref=e428] [cursor=pointer]
+      - button "Create account" [ref=e381] [cursor=pointer]:
+        - img [ref=e382]
+        - text: Create account
+    - generic [ref=e385]:
+      - button "Enter as Demo Operator" [ref=e386] [cursor=pointer]
+      - button "Enter as Demo EV User" [ref=e387] [cursor=pointer]
+    - paragraph [ref=e388]:
+      - text: Already have access?
+      - button "Sign in" [ref=e389] [cursor=pointer]
+      - text: or
+      - link "return home" [ref=e390] [cursor=pointer]:
+        - /url: /
+      - text: .

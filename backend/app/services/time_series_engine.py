@@ -2,6 +2,7 @@ import math
 import random
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
+from app.services.demand_predictor import DemandPredictor
 
 class TimeSeriesEngine:
     """
@@ -56,6 +57,7 @@ class TimeSeriesEngine:
             'high_growth': {'multiplier': 1.5},
             'station_outage': {'affected_zones': [], 'multiplier': 2.0}
         }
+        self.predictor = DemandPredictor()
         
     def _initialize_zones(self) -> List[Dict]:
         """Initialize zone data with time-series storage."""
@@ -270,10 +272,13 @@ class TimeSeriesEngine:
             
             total_demand += current
             
-            # Determine status based on demand
-            if current > zone['capacity'] * 0.85:
+            # Predictive Mapping: Determine status based on XGBoost prediction for +15 minutes
+            future_time = datetime.now() + timedelta(minutes=15)
+            predicted_15m, _, _ = self.predictor.predict_demand(zone['id'], future_time)
+            
+            if predicted_15m > zone['capacity'] * 0.85:
                 status = 'RED'
-            elif current > zone['capacity'] * 0.6:
+            elif predicted_15m > zone['capacity'] * 0.6:
                 status = 'YELLOW'
             else:
                 status = 'GREEN'

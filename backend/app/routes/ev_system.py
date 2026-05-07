@@ -63,7 +63,7 @@ async def get_stations(lat: Optional[float] = None, lng: Optional[float] = None)
 @router.post("/route")
 async def calculate_route_endpoint(request: RouteRequest):
     """Calculate route from user to station"""
-    route = calculate_route(
+    route = await calculate_route(
         request.user_lat, request.user_lng,
         request.station_lat, request.station_lng
     )

@@ -50,14 +50,14 @@ export const mockAlerts: Alert[] = [
   {
     zone_id: 3,
     alert_type: 'Overload Warning',
-    severity: 'High',
+    severity: 'high',
     message: 'Zone 3 approaching maximum capacity. Optimization recommended.',
     timestamp: NOW,
   },
   {
     zone_id: 1,
     alert_type: 'Demand Surge',
-    severity: 'Medium',
+    severity: 'medium',
     message: 'Rapid demand increase detected in Zone 1.',
     timestamp: NOW,
   },
@@ -88,12 +88,22 @@ export const mockRecommendations: Recommendation[] = [
     zone_name: 'Tech Park South',
     score: 92,
     justification: 'Optimal balance of high expected demand and low installation costs.',
+    type: 'station',
+    headline: 'Add chargers in Tech Park South',
+    why: 'Highest expected utilization with moderate installation cost',
+    benefits: ['85% expected utilization', '18-month payback', 'Network coverage expansion'],
+    confidence: '92%',
   },
   {
     zone_id: 5,
     zone_name: 'Highway 99 Junction',
     score: 78,
     justification: 'Crucial for network coverage, moderate ROI expected.',
+    type: 'station',
+    headline: 'Add chargers at Highway 99 Junction',
+    why: 'Strategic location for network coverage',
+    benefits: ['Critical coverage gap', 'Moderate ROI', 'Highway corridor support'],
+    confidence: '78%',
   },
 ];
 
@@ -232,16 +242,24 @@ export const getMockDemandPrediction = (zoneId: number): DemandPrediction => ({
 
 export const getMockForecast = (zoneId: number): Forecast => ({
   zone_id: zoneId,
+  zone_name: `Zone ${zoneId}`,
+  model: 'XGBoost',
   forecasts: Array.from({ length: 24 }).map((_, i) => {
     const base = 200 + Math.sin((i / 24) * Math.PI) * 400;
     return {
       hour: i,
+      label: `${i.toString().padStart(2, '0')}:00`,
       predicted_demand: base + ((i * 19) % 45),
       confidence_lower: base - 50,
       confidence_upper: base + 100,
+      confidence_tier: 'High' as const,
       baseline_demand: base,
+      status: 'STABLE' as const,
+      timestamp: new Date().toISOString(),
+      explanation: { reason: 'Normal operation', impact: 'Within limits', confidence: '92% confidence' },
     };
   }),
+  peak: { hour: 18, label: '18:00', predicted_demand: 620, confidence_upper: 720 },
   model_accuracy: 0.92,
   baseline_comparison: 'Predicted demand is 5% higher than baseline historical average.',
 });
@@ -249,22 +267,21 @@ export const getMockForecast = (zoneId: number): Forecast => ({
 export const getMockOptimization = (zoneId: number): OptimizationResult => ({
   recommended_windows: [
     {
-      station_id: 1,
-      windows: [
-        { hour: 10, power: 45.0, percentage: 80 },
-        { hour: 11, power: 50.0, percentage: 100 },
-      ],
+      hour: 10,
+      power: 45.0,
+      percentage: 80,
     },
     {
-      station_id: 2,
-      windows: [
-        { hour: 14, power: 30.0, percentage: 60 },
-        { hour: 15, power: 30.0, percentage: 60 },
-      ],
+      hour: 11,
+      power: 50.0,
+      percentage: 100,
     },
   ],
   reason: `Shifted 150kWh from peak hours to off-peak for Zone ${zoneId}.`,
   confidence: 0.88,
+  reduction_percent: 15.7,
+  before_peak: 890.2,
+  after_peak: 750.0,
 });
 
 export const getMockImpact = (zoneId: number): OptimizationImpact => ({

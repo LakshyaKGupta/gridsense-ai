@@ -36,6 +36,7 @@ SCENARIO_MULTIPLIERS: Dict[str, Dict[str, float]] = {
     "evening_peak": {"ev_count": 1.18, "past_demand": 1.12, "confidence": 0.97, "capacity": 1.0},
     "high_growth": {"ev_count": 1.32, "past_demand": 1.20, "confidence": 0.94, "capacity": 0.96},
     "outage": {"ev_count": 1.10, "past_demand": 1.25, "confidence": 0.92, "capacity": 0.78},
+    "festival_surge": {"ev_count": 1.45, "past_demand": 1.35, "confidence": 0.88, "capacity": 0.85},
 }
 
 
@@ -198,6 +199,36 @@ class DemandPredictor:
         capacity = get_zone_capacity(zone_id) * multipliers["capacity"]
         overload_delta = prediction - capacity
 
+        contributing_factors: List[str] = []
+
+        # Time-based factors
+        hour = target_datetime.hour
+        if 18 <= hour <= 22:
+            contributing_factors.append("evening demand surge")
+            contributing_factors.append("office return traffic")
+        elif 7 <= hour <= 10:
+            contributing_factors.append("morning charging wave")
+            contributing_factors.append("commuter departure pattern")
+        elif 0 <= hour <= 5:
+            contributing_factors.append("overnight residential charging")
+        else:
+            contributing_factors.append("midday baseline demand")
+
+        # Zone-based factors
+        if zone_type == "residential":
+            contributing_factors.append("residential return-home behavior")
+            contributing_factors.append("high EV density in residential corridors")
+        elif zone_type == "commercial":
+            contributing_factors.append("commercial trip turnover")
+            contributing_factors.append("high EV density in commercial corridors")
+        else:
+            contributing_factors.append("industrial fleet concentration")
+            contributing_factors.append("fleet charging schedule alignment")
+
+        # Scenario factor
+        if scenario != "normal":
+            contributing_factors.append(f"{scenario.replace('_', ' ')} scenario active")
+
         reason_parts: List[str] = []
         if 18 <= target_datetime.hour <= 22:
             reason_parts.append("evening demand surge")
@@ -230,6 +261,7 @@ class DemandPredictor:
             "reason": f"Peak expected due to {' and '.join(reason_parts)}.",
             "impact": impact,
             "confidence": f"{round(confidence * 100)}% confidence from {model_type.lower()} inference using real-time context.",
+            "contributing_factors": contributing_factors,
         }
 
         return {

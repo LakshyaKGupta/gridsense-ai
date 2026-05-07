@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { startSystemEngine, subscribeSystemState, SystemState } from '../system/stateEngine';
+import { startSystemEngine, subscribeSystemState, SystemState, UserRole } from '../system/stateEngine';
+import { useAuth } from './AuthContext';
 
 type SystemStateShape = SystemState;
 
@@ -10,29 +11,30 @@ type SystemStateContextValue = {
 const SystemStateContext = createContext<SystemStateContextValue | undefined>(undefined);
 
 export const SystemStateProvider = ({ children }: { children: React.ReactNode }) => {
-  const [state, setState] = useState<SystemStateShape>({ 
-    zones: [], 
-    stations: [], 
-    total_demand: 0, 
-    peak_load: 0, 
-    optimized_peak: 0, 
-    reduction_percent: 0, 
-    alerts: [], 
+  const { role } = useAuth();
+
+  const [state, setState] = useState<SystemStateShape>({
+    zones: [],
+    stations: [],
+    total_demand: 0,
+    peak_load: 0,
+    optimized_peak: 0,
+    reduction_percent: 0,
+    alerts: [],
     timestamp: '',
     current_hour: 0,
     scenario: null,
-    data_source: 'fallback'
+    data_source: 'fallback',
   });
 
   useEffect(() => {
-    // Start the engine on first mount
-    startSystemEngine();
+    // Start engine with the user's role so polling cadence is correct
+    startSystemEngine(role as UserRole);
     const unsubscribe = subscribeSystemState((newState) => {
       setState(newState);
     });
-    // seed initial state via a one-off fetch from engine (subscriber will also fire immediately)
     return () => unsubscribe();
-  }, []);
+  }, [role]); // restart if role changes
 
   return (
     <SystemStateContext.Provider value={{ state }}>

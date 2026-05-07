@@ -1,0 +1,95 @@
+- generic [ref=e305]:
+  - generic [ref=e306]:
+    - button "Back to Home" [ref=e307] [cursor=pointer]:
+      - img [ref=e308]
+      - text: Back to Home
+    - generic [ref=e310]:
+      - img [ref=e311]
+      - text: GridSense AI
+    - heading "Prevent Grid Overload Before It Happens" [level=1] [ref=e313]
+    - paragraph [ref=e314]: AI-powered EV infrastructure intelligence for BESCOM. Monitor feeder stress, forecast demand, and plan charging capacity before peak conditions spill into outages.
+    - generic [ref=e315]:
+      - generic [ref=e316]:
+        - paragraph [ref=e317]: Operator view
+        - paragraph [ref=e318]: 24h demand curve
+      - generic [ref=e319]:
+        - paragraph [ref=e320]: Planning mode
+        - paragraph [ref=e321]: Zone expansion insights
+      - generic [ref=e322]:
+        - paragraph [ref=e323]: AI output
+        - paragraph [ref=e324]: Reason / impact / confidence
+  - generic [ref=e325]:
+    - generic [ref=e326]:
+      - generic [ref=e327]:
+        - paragraph [ref=e328]: System Gateway
+        - heading "Create account" [level=2] [ref=e329]
+      - img [ref=e331]
+    - generic [ref=e336]:
+      - button "BESCOM Operator Monitor grid load, forecast demand, and plan infrastructure" [ref=e337] [cursor=pointer]:
+        - generic [ref=e338]:
+          - img [ref=e340]
+          - generic [ref=e345]:
+            - paragraph [ref=e346]: BESCOM Operator
+            - paragraph [ref=e347]: Monitor grid load, forecast demand, and plan infrastructure
+      - button "EV Owner Find stations, avoid queues, and optimize charging time" [ref=e348] [cursor=pointer]:
+        - generic [ref=e349]:
+          - img [ref=e351]
+          - generic [ref=e355]:
+            - paragraph [ref=e356]: EV Owner
+            - paragraph [ref=e357]: Find stations, avoid queues, and optimize charging time
+    - generic [ref=e358]:
+      - button "Login" [ref=e359] [cursor=pointer]
+      - button "Sign up" [ref=e360] [cursor=pointer]
+    - generic [ref=e361]:
+      - generic [ref=e362]:
+        - generic [ref=e363]:
+          - generic [ref=e364]: Name
+          - textbox "Name" [ref=e365]:
+            - /placeholder: Full name
+        - generic [ref=e366]:
+          - generic [ref=e367]: Email
+          - textbox "Email" [ref=e368]:
+            - /placeholder: you@company.com
+        - generic [ref=e369]:
+          - generic [ref=e370]: Password
+          - textbox "Password" [ref=e371]:
+            - /placeholder: Enter password
+        - generic [ref=e372]:
+          - generic [ref=e373]: Employee ID
+          - textbox "Employee ID" [ref=e374]:
+            - /placeholder: BESCOM-1024
+        - generic [ref=e375]:
+          - generic [ref=e376]: Department
+          - combobox "Department" [ref=e377]:
+            - option "Grid Operations" [selected]
+            - option "Infrastructure Planning"
+            - option "Maintenance"
+        - generic [ref=e378]:
+          - generic [ref=e379]: Assigned Zone
+          - combobox "Assigned Zone" [ref=e380]:
+            - option "Whole Bengaluru"
+            - option "Indiranagar" [selected]
+            - option "Whitefield"
+            - option "Koramangala"
+            - option "Electronic City"
+            - option "Jayanagar"
+            - option "MG Road"
+            - option "Manyata Tech Park"
+            - option "Yelahanka"
+            - option "JP Nagar"
+            - option "Hebbal"
+            - option "Banashankari"
+            - option "Airport Corridor"
+      - button "Create account" [ref=e381] [cursor=pointer]:
+        - img [ref=e382]
+        - text: Create account
+    - generic [ref=e385]:
+      - button "Enter as Demo Operator" [ref=e386] [cursor=pointer]
+      - button "Enter as Demo EV User" [ref=e387] [cursor=pointer]
+    - paragraph [ref=e388]:
+      - text: Already have access?
+      - button "Sign in" [ref=e389] [cursor=pointer]
+      - text: or
+      - link "return home" [ref=e390] [cursor=pointer]:
+        - /url: /
+      - text: .

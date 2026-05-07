@@ -1,457 +1,750 @@
-import { useEffect, useMemo, useState, startTransition } from 'react';
-import { BatteryCharging, Clock3, IndianRupee, LogOut, MapPin, Navigation, Route, ShieldCheck, Zap } from 'lucide-react';
-import Map, { Layer, Marker, NavigationControl, Source } from 'react-map-gl/maplibre';
-import 'maplibre-gl/dist/maplibre-gl.css';
+import { useEffect, useState, useMemo } from 'react';
+import { Navigation, AlertCircle, Zap, ChevronRight } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import type { FeatureCollection, LineString } from 'geojson';
 import { useAuth } from '../context/AuthContext';
-import { dashboardAPI, UserDashboardPayload } from '../services/api';
+import { dashboardAPI, UserDashboardPayload, Forecast } from '../services/api';
+import Map, { Marker, Popup, NavigationControl } from 'react-map-gl/maplibre';
+import 'maplibre-gl/dist/maplibre-gl.css';
 
 const MAP_STYLE = 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json';
 const DEFAULT_LOCATION = { lat: 12.9716, lng: 77.5946 };
+const BENGALURU_BOUNDS = { latMin: 12.82, latMax: 13.15, lngMin: 77.45, lngMax: 77.80 };
 
-function statusTone(status: 'GREEN' | 'YELLOW' | 'RED') {
-  if (status === 'RED') return 'text-rose-300';
-  if (status === 'YELLOW') return 'text-amber-300';
-  return 'text-emerald-300';
+type UserWorkspace = 'charge' | 'route' | 'smart' | 'vehicle' | 'history' | 'saved' | 'insights' | 'notifications' | 'wallet' | 'settings';
+
+const USER_WORKSPACES: { id: UserWorkspace; label: string }[] = [
+  { id: 'charge', label: 'Charge Now' },
+  { id: 'route', label: 'Route' },
+  { id: 'smart', label: 'Smart' },
+  { id: 'vehicle', label: 'Vehicle' },
+  { id: 'history', label: 'History' },
+  { id: 'saved', label: 'Saved' },
+  { id: 'insights', label: 'Insights' },
+  { id: 'notifications', label: 'Alerts' },
+  { id: 'wallet', label: 'Wallet' },
+  { id: 'settings', label: 'Settings' },
+];
+
+function isInBengaluru(lat: number, lng: number): boolean {
+  return lat >= BENGALURU_BOUNDS.latMin && lat <= BENGALURU_BOUNDS.latMax && lng >= BENGALURU_BOUNDS.lngMin && lng <= BENGALURU_BOUNDS.lngMax;
 }
 
-function statusBadge(status: 'GREEN' | 'YELLOW' | 'RED') {
-  if (status === 'RED') return 'border-rose-400/20 bg-rose-400/10 text-rose-200';
-  if (status === 'YELLOW') return 'border-amber-400/20 bg-amber-400/10 text-amber-200';
-  return 'border-emerald-400/20 bg-emerald-400/10 text-emerald-200';
+function statusColor(status: 'GREEN' | 'YELLOW' | 'RED') {
+  if (status === 'GREEN') return { bg: 'bg-emerald-400/10', text: 'text-emerald-300', border: 'border-emerald-400/20', dot: '#10b981', badge: 'Available' };
+  if (status === 'YELLOW') return { bg: 'bg-amber-400/10', text: 'text-amber-300', border: 'border-amber-400/20', dot: '#eab308', badge: 'Moderate wait' };
+  return { bg: 'bg-red-400/10', text: 'text-red-300', border: 'border-red-400/20', dot: '#ef4444', badge: 'Busy' };
+}
+
+function formatHour(hour: number): string {
+  const date = new Date();
+  date.setHours(hour, 0, 0, 0);
+  return date.toLocaleTimeString('en-US', { hour: 'numeric', hour12: true });
+}
+
+function buildDirectionsUrl(lat: number, lng: number, origin?: { lat: number; lng: number }): string {
+  const dest = `${lat.toFixed(6)},${lng.toFixed(6)}`;
+  const params = new URLSearchParams({ api: '1', destination: dest, travelmode: 'driving', dir_action: 'navigate' });
+  if (origin) params.set('origin', `${origin.lat.toFixed(6)},${origin.lng.toFixed(6)}`);
+  return `https://www.google.com/maps/dir/?${params.toString()}`;
 }
 
 export default function UserDashboard() {
   const { token, logout, profile } = useAuth();
   const [location, setLocation] = useState(DEFAULT_LOCATION);
-  const [panel, setPanel] = useState<'stations' | 'strategy' | 'compare'>('stations');
   const [data, setData] = useState<UserDashboardPayload | null>(null);
+  const [forecast, setForecast] = useState<Forecast | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedStationId, setSelectedStationId] = useState<number | null>(null);
-  const [viewState, setViewState] = useState({ longitude: DEFAULT_LOCATION.lng, latitude: DEFAULT_LOCATION.lat, zoom: 11.5 });
+  const [viewState, setViewState] = useState({ longitude: DEFAULT_LOCATION.lng, latitude: DEFAULT_LOCATION.lat, zoom: 12 });
+  const [selectedStation, setSelectedStation] = useState<UserDashboardPayload['station_options'][0] | null>(null);
+  const [isDemoMode, setIsDemoMode] = useState(false);
+  const [workspace, setWorkspace] = useState<UserWorkspace>('charge');
 
+  // Get user location with Bengaluru demo mode detection
   useEffect(() => {
-    if (!navigator.geolocation) return;
+    if (!navigator.geolocation) {
+      setIsDemoMode(true);
+      return;
+    }
     navigator.geolocation.getCurrentPosition(
-      (position) => {
-        startTransition(() => {
-          setLocation({ lat: position.coords.latitude, lng: position.coords.longitude });
-          setViewState((current) => ({
-            ...current,
-            latitude: position.coords.latitude,
-            longitude: position.coords.longitude,
-            zoom: 12.2,
-          }));
-        });
+      (pos) => {
+        const loc = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+        if (isInBengaluru(loc.lat, loc.lng)) {
+          setLocation(loc);
+          setViewState((prev) => ({ ...prev, longitude: loc.lng, latitude: loc.lat, zoom: 13 }));
+        } else {
+          setIsDemoMode(true);
+        }
       },
-      () => undefined,
-      { enableHighAccuracy: true, timeout: 6000 },
+      () => setIsDemoMode(true),
+      { enableHighAccuracy: true, timeout: 6000 }
     );
   }, []);
 
+  // Fetch dashboard data
   useEffect(() => {
     if (!token) return;
-    let cancelled = false;
     const userData = profile?.user_data;
-
     setLoading(true);
     setError(null);
-    dashboardAPI.getUserDashboard(token, {
-      lat: location.lat,
-      lng: location.lng,
-      selected_station_id: selectedStationId,
-      vehicle_model: userData?.vehicleModel,
-      battery_capacity_kwh: userData?.batteryCapacityKwh,
-      home_charging_access: userData?.homeChargingAccess,
-      typical_charging_time: userData?.typicalChargingTime,
-    })
-      .then((payload) => {
-        if (cancelled) return;
-        startTransition(() => {
-          const nearestStation = payload.nearest_station;
-          const focusStation = payload.selected_station || nearestStation;
-          setData(payload);
-          setSelectedStationId((current) => current ?? nearestStation?.id ?? null);
-          if (focusStation) {
-            setViewState((current) => ({
-              ...current,
-              latitude: focusStation.lat,
-              longitude: focusStation.lng,
-            }));
-          }
-        });
+
+    dashboardAPI
+      .getUserDashboard(token, {
+        lat: location.lat,
+        lng: location.lng,
+        vehicle_model: userData?.vehicleModel,
+        battery_capacity_kwh: userData?.batteryCapacityKwh,
+        home_charging_access: userData?.homeChargingAccess,
+        typical_charging_time: userData?.typicalChargingTime,
       })
-      .catch((fetchError) => {
-        if (cancelled) return;
-        setError(fetchError instanceof Error ? fetchError.message : 'Failed to load EV dashboard.');
+      .then((payload) => {
+        setData(payload);
+        setError(null);
+      })
+      .catch((err) => {
+        setError(err instanceof Error ? err.message : 'Failed to load dashboard');
       })
       .finally(() => {
-        if (!cancelled) setLoading(false);
+        setLoading(false);
       });
+  }, [token, location, profile]);
 
-    return () => {
-      cancelled = true;
-    };
-  }, [token, profile, location.lat, location.lng, selectedStationId]);
+  // Fetch forecast data
+  useEffect(() => {
+    if (!token || !data?.zone) return;
+    dashboardAPI
+      .getForecast(token, data.zone.id)
+      .then((forecastData) => setForecast(forecastData))
+      .catch(() => undefined);
+  }, [token, data?.zone?.id]);
 
-  const selectedStation = useMemo(() => {
-    if (!data) return null;
-    return data.station_options.find((station) => station.id === selectedStationId) || data.selected_station || data.nearest_station;
-  }, [data, selectedStationId]);
+  const recommendedStation = data?.nearest_station;
+  const stationOptions = data?.station_options?.slice(0, 6) || [];
+  const routeOrigin = data?.effective_location || location;
+  const decision = data?.decision_support;
+  const recommendation = decision?.recommended_action;
+  const chargeNow = decision?.charge_now;
 
-  if (loading && !data) {
-    return <div className="min-h-screen bg-[#0B0F14] text-slate-200 flex items-center justify-center">Loading EV utility workspace...</div>;
+  const bestTimeWindow = useMemo(() => {
+    if (!forecast?.forecasts) return null;
+    const sorted = [...forecast.forecasts].sort((a, b) => a.predicted_demand - b.predicted_demand);
+    return sorted[0];
+  }, [forecast]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-[#0B0F14] text-slate-100">
+        <header className="sticky top-0 z-40 border-b border-white/8 bg-[#0B0F14]/88 backdrop-blur-xl">
+          <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-4 sm:px-6">
+            <div className="flex items-center gap-3">
+              <div className="h-10 w-10 rounded-2xl bg-white/5 animate-pulse" />
+              <div>
+                <div className="h-3 w-20 bg-white/5 rounded animate-pulse" />
+                <div className="h-5 w-32 bg-white/5 rounded animate-pulse mt-2" />
+              </div>
+            </div>
+          </div>
+        </header>
+        <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6">
+          <div className="grid gap-6 lg:grid-cols-[1fr_380px]">
+            <div className="rounded-2xl border border-white/8 bg-white/[0.03]">
+              <div className="h-[600px] bg-slate-900 animate-pulse rounded-2xl" />
+            </div>
+            <div className="space-y-4">
+              <div className="rounded-2xl border border-white/8 bg-white/[0.03] p-5">
+                <div className="h-3 w-32 bg-white/5 rounded animate-pulse" />
+                <div className="h-6 w-48 bg-white/5 rounded animate-pulse mt-3" />
+                <div className="space-y-2 mt-4">
+                  {[1, 2, 3].map((i) => <div key={i} className="h-4 w-full bg-white/5 rounded animate-pulse" />)}
+                </div>
+              </div>
+              <div className="rounded-2xl border border-white/8 bg-white/[0.03] p-5">
+                <div className="h-3 w-24 bg-white/5 rounded animate-pulse" />
+                <div className="space-y-2 mt-4">
+                  {[1, 2, 3, 4].map((i) => <div key={i} className="h-10 bg-white/5 rounded animate-pulse" />)}
+                </div>
+              </div>
+            </div>
+          </div>
+        </main>
+      </div>
+    );
   }
 
-  if (!data) {
+  if (error || !data) {
     return (
-      <div className="min-h-screen bg-[#0B0F14] text-slate-200 flex items-center justify-center p-6">
-        <div className="max-w-lg rounded-3xl border border-white/10 bg-white/5 p-8 text-center">
-          <MapPin className="mx-auto mb-4 text-cyan-300" size={28} />
-          <p className="text-lg font-semibold text-white">EV dashboard unavailable</p>
-          <p className="mt-2 text-sm text-slate-400">{error || 'Backend route and station data could not be loaded.'}</p>
+      <div className="min-h-screen bg-[#0B0F14] flex items-center justify-center text-slate-100">
+        <div className="text-center max-w-sm">
+          <AlertCircle className="mx-auto mb-4 text-red-400" size={32} />
+          <p className="text-red-200">{error || 'Unable to load dashboard'}</p>
         </div>
       </div>
     );
   }
 
-  const routeGeoJson: FeatureCollection<LineString> | null = data.route ? {
-    type: 'FeatureCollection',
-    features: [{
-      type: 'Feature',
-      geometry: {
-        type: 'LineString',
-        coordinates: data.route.geometry.coordinates,
-      },
-      properties: {},
-    }],
-  } : null;
-  const routeOrigin = data.effective_location || location;
-
   return (
     <div className="min-h-screen bg-[#0B0F14] text-slate-100">
-      <div
-        className="fixed inset-0 opacity-40 pointer-events-none"
-        style={{
-          backgroundImage: 'radial-gradient(circle at 18% 16%, rgba(56,189,248,0.14), transparent 30%), radial-gradient(circle at 82% 14%, rgba(16,185,129,0.12), transparent 24%), linear-gradient(180deg, rgba(148,163,184,0.05), transparent 62%)',
-        }}
-      />
-
-      <header className="sticky top-0 z-40 border-b border-white/8 bg-[#0B0F14]/80 backdrop-blur-xl">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
+      {/* Header */}
+      <header className="sticky top-0 z-40 border-b border-white/8 bg-[#0B0F14]/88 backdrop-blur-xl">
+        <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-3 sm:px-6">
           <Link to="/" className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-cyan-300/30 bg-cyan-300/10 text-cyan-200">
-              <BatteryCharging size={18} />
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-slate-300">
+              <Zap size={16} />
             </div>
             <div>
-              <p className="text-xs uppercase tracking-[0.28em] text-cyan-200/70">EV Owner</p>
-              <h1 className="text-xl font-semibold text-white">Charging Navigation and Timing Console</h1>
+              <p className="text-[10px] uppercase tracking-[0.24em] text-slate-500">GridSense</p>
+              <h1 className="text-sm font-semibold text-white">Charging Navigation</h1>
             </div>
           </Link>
-          <div className="flex items-center gap-3">
-            <Link to="/" className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-slate-300 hover:text-white">Home</Link>
-            <Link to="/profile" className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-slate-300 hover:text-white">Profile</Link>
-            <button onClick={() => void logout()} className="inline-flex items-center gap-2 rounded-xl border border-rose-400/20 bg-rose-400/10 px-4 py-2 text-sm text-rose-200">
-              <LogOut size={14} />
+          <div className="flex items-center gap-2">
+            {isDemoMode && (
+              <span className="rounded-md bg-amber-400/10 px-2 py-1 text-[10px] font-medium text-amber-300 border border-amber-400/20">
+                Demo: Bengaluru
+              </span>
+            )}
+            <Link to="/" className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-slate-400 hover:text-white transition">
+              Home
+            </Link>
+            <button onClick={() => logout()} className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-slate-400 hover:text-white transition">
               Sign out
             </button>
           </div>
         </div>
       </header>
 
-      <main className="relative z-10 mx-auto flex max-w-[1380px] flex-col gap-5 px-6 py-5">
-        <section className="grid gap-4 lg:grid-cols-[1.08fr_0.92fr]">
-          <div className="rounded-[28px] border border-white/10 bg-white/5 p-6 shadow-2xl shadow-black/20 backdrop-blur-xl">
-            <div className="flex flex-wrap items-start justify-between gap-4">
-              <div>
-                <p className="text-xs uppercase tracking-[0.3em] text-slate-400">Decision Guidance</p>
-                <h2 className="mt-2 text-3xl font-semibold text-white">Pick the lowest-friction charger and move the session out of peak load.</h2>
-                <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-400">
-                  Recommendations are generated from backend station status, route distance, queue pressure, and the XGBoost demand forecast for your current zone.
-                </p>
-              </div>
-              <div className={`rounded-2xl border px-4 py-3 text-right ${selectedStation ? statusBadge(selectedStation.status) : 'border-white/10 bg-white/5 text-slate-300'}`}>
-                <p className="text-xs uppercase tracking-[0.24em]">Selected Station</p>
-                <p className="mt-1 text-lg font-semibold text-white">{selectedStation?.name || 'Unavailable'}</p>
-              </div>
-            </div>
+      {/* User Workspace Tabs */}
+      <div className="w-full border-b border-white/8 bg-white/[0.02]">
+        <div className="mx-auto flex max-w-7xl gap-1 px-4 py-2 overflow-x-auto">
+          {USER_WORKSPACES.map((ws) => {
+            const isActive = workspace === ws.id;
+            return (
+              <button
+                key={ws.id}
+                onClick={() => setWorkspace(ws.id)}
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs whitespace-nowrap transition ${
+                  isActive
+                    ? 'bg-green-500/20 text-green-300 border border-green-500/30'
+                    : 'text-slate-400 hover:text-white hover:bg-white/5'
+                }`}
+              >
+                {ws.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
 
-            {data.charging_recommendation && (
-              <div className="mt-6 rounded-[24px] border border-cyan-300/20 bg-cyan-300/10 p-5">
-                <p className="text-sm font-semibold text-white">{data.charging_recommendation.headline}</p>
-                <p className="mt-3 text-sm text-slate-200">{data.charging_recommendation.reason}</p>
-                <div className="mt-3 flex flex-wrap items-center gap-3 text-xs uppercase tracking-[0.24em] text-cyan-200/80">
-                  <span>{data.charging_recommendation.confidence}</span>
-                  <span className="text-slate-400">{data.charging_recommendation.impact}</span>
-                </div>
-              </div>
-            )}
-
-            {data.service_area_notice && (
-              <div className="mt-4 rounded-2xl border border-amber-400/20 bg-amber-400/10 px-4 py-3 text-sm text-amber-100">
-                {data.service_area_notice}
-              </div>
-            )}
-          </div>
-
-          <div className="rounded-[28px] border border-white/10 bg-gradient-to-br from-white/8 to-white/3 p-6 shadow-2xl shadow-black/20 backdrop-blur-xl">
-            <p className="text-xs uppercase tracking-[0.3em] text-slate-400">Session Economics</p>
-            <div className="mt-6 grid gap-4">
-              <div className="rounded-2xl border border-white/8 bg-[#0E141C] p-4">
-                <p className="text-sm text-slate-400">Target Energy</p>
-                <p className="mt-1 text-3xl font-semibold text-white">{data.decision_support.target_energy_kwh} kWh</p>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="rounded-2xl border border-white/8 bg-[#0E141C] p-4">
-                  <p className="text-sm text-slate-400">Public Cost</p>
-                  <p className="mt-1 text-2xl font-semibold text-cyan-300">INR {data.decision_support.public_cost_inr}</p>
-                </div>
-                <div className="rounded-2xl border border-white/8 bg-[#0E141C] p-4">
-                  <p className="text-sm text-slate-400">Session Time</p>
-                  <p className="mt-1 text-2xl font-semibold text-emerald-300">{data.decision_support.estimated_session_minutes} min</p>
-                </div>
-              </div>
-              <div className="rounded-2xl border border-white/8 bg-[#0E141C] p-4 text-sm text-slate-300">
-                <p>{data.load_context.explanation.reason}</p>
-                <p className="mt-2 text-slate-400">{data.load_context.explanation.impact}</p>
-                <p className="mt-2 text-slate-500">{data.load_context.explanation.confidence}</p>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <section className="grid gap-4 md:grid-cols-4">
-          {[
-            { label: 'Best Time to Charge', value: data.charging_recommendation?.time_label || 'N/A', icon: Clock3, tone: 'text-cyan-300' },
-            { label: 'Route Duration', value: data.route ? `${data.route.duration_minutes} min` : 'N/A', icon: Route, tone: 'text-emerald-300' },
-            { label: 'Wait Saved', value: `${data.decision_support.queue_time_savings_minutes} min`, icon: ShieldCheck, tone: 'text-cyan-300' },
-            { label: 'Public vs Home', value: data.decision_support.savings_vs_home_inr != null ? `+INR ${data.decision_support.savings_vs_home_inr}` : 'No home charger', icon: IndianRupee, tone: 'text-emerald-300' },
-          ].map((card) => (
-            <div key={card.label} className="rounded-[24px] border border-white/10 bg-white/5 p-5 backdrop-blur-xl">
-              <div className="flex items-center justify-between">
-                <p className="text-sm text-slate-400">{card.label}</p>
-                <card.icon size={16} className={card.tone} />
-              </div>
-              <p className={`mt-4 text-2xl font-semibold ${card.tone}`}>{card.value}</p>
-            </div>
-          ))}
-        </section>
-
-        <section className="grid gap-5 xl:grid-cols-[1.22fr_0.78fr]">
-          <div className="rounded-[28px] border border-white/10 bg-white/5 p-6 backdrop-blur-xl">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs uppercase tracking-[0.28em] text-slate-400">Station Map</p>
-                <h3 className="mt-2 text-xl font-semibold text-white">Live route and station availability</h3>
-              </div>
-              <Navigation size={18} className="text-cyan-300" />
-            </div>
-            <div className="mt-4 rounded-2xl border border-white/8 bg-[#0D131A] p-4 text-sm text-slate-300">
-              The highlighted route always reflects the active station choice. Use the comparison list to switch between the fastest and the most cost-efficient stop.
-            </div>
-            <div className="mt-4 h-[420px] overflow-hidden rounded-[22px] border border-white/8">
+      <main className="mx-auto max-w-7xl px-4 py-4 sm:px-6">
+        <div className="grid gap-4 lg:grid-cols-[1fr_380px]">
+          {/* ===== MAP ===== */}
+          <section className="rounded-2xl border border-white/8 bg-white/[0.03] overflow-hidden">
+            {workspace === 'charge' && (
+            <div className="relative h-[600px] bg-slate-900">
               <Map
                 {...viewState}
-                onMove={(event) => setViewState(event.viewState)}
+                onMove={(evt) => setViewState(evt.viewState)}
                 mapStyle={MAP_STYLE}
                 attributionControl={false}
                 style={{ width: '100%', height: '100%' }}
               >
                 <NavigationControl position="bottom-right" />
+
+                {/* User location */}
                 <Marker longitude={routeOrigin.lng} latitude={routeOrigin.lat} anchor="center">
-                  <div className="h-4 w-4 rounded-full border-2 border-white bg-cyan-300 shadow-[0_0_16px_rgba(56,189,248,0.45)]" />
+                  <div className="relative">
+                    <div className="absolute inset-0 h-4 w-4 rounded-full bg-blue-400 animate-ping opacity-20" />
+                    <div className="h-3 w-3 rounded-full bg-blue-400 border-2 border-white" />
+                  </div>
                 </Marker>
-                {data.station_options.map((station) => {
-                  const tone = station.status === 'RED' ? '#fb7185' : station.status === 'YELLOW' ? '#fbbf24' : '#34d399';
+
+                {/* Stations */}
+                {stationOptions.map((station) => {
+                  const isRecommended = station.id === recommendedStation?.id;
+                  const color = statusColor(station.status);
                   return (
                     <Marker key={station.id} longitude={station.lng} latitude={station.lat} anchor="center">
-                      <button
-                        onClick={() => setSelectedStationId(station.id)}
-                        className="flex h-8 w-8 items-center justify-center rounded-xl border-2 border-white text-white"
-                        style={{ backgroundColor: tone, transform: selectedStationId === station.id ? 'scale(1.08)' : 'scale(1)' }}
-                        aria-label={`Select ${station.name}`}
-                      >
-                        <Zap size={13} />
-                      </button>
+                      <div
+                        className={`cursor-pointer transition-transform hover:scale-110 ${isRecommended ? 'h-7 w-7' : 'h-5 w-5'} rounded-full border-2 border-white shadow-lg`}
+                        style={{ backgroundColor: color.dot }}
+                        onClick={() => {
+                          setSelectedStation(station);
+                          setViewState((prev) => ({ ...prev, longitude: station.lng, latitude: station.lat, zoom: 14 }));
+                        }}
+                      />
                     </Marker>
                   );
                 })}
-                {routeGeoJson && (
-                  <Source id="route" type="geojson" data={routeGeoJson}>
-                    <Layer
-                      id="route-line"
-                      type="line"
-                      paint={{
-                        'line-color': '#38bdf8',
-                        'line-width': 4,
-                        'line-opacity': 0.75,
-                      }}
-                    />
-                  </Source>
+
+                {/* Station popup */}
+                {selectedStation && (
+                  <Popup
+                    longitude={selectedStation.lng}
+                    latitude={selectedStation.lat}
+                    anchor="bottom"
+                    onClose={() => setSelectedStation(null)}
+                    closeButton={true}
+                    closeOnClick={false}
+                    offset={15}
+                    className="[&_.maplibregl-popup-content]:bg-[#0B0F14] [&_.maplibregl-popup-content]:border [&_.maplibregl-popup-content]:border-white/10 [&_.maplibregl-popup-content]:rounded-xl [&_.maplibregl-popup-content]:p-0 [&_.maplibregl-popup-close-button]:text-white"
+                  >
+                    <div className="min-w-[220px]">
+                      <div className="p-3 border-b border-white/8">
+                        <h4 className="font-medium text-white text-sm">{selectedStation.name}</h4>
+                        <p className="text-xs text-slate-500 mt-0.5">{selectedStation.distance.toFixed(1)} km · {Math.round(selectedStation.wait_time)} min wait</p>
+                      </div>
+                      <div className="p-3 grid grid-cols-3 gap-2 text-xs">
+                        <div>
+                          <p className="text-slate-500">Load</p>
+                          <p className="text-white font-medium">{Math.round(selectedStation.load)} kW</p>
+                        </div>
+                        <div>
+                          <p className="text-slate-500">Capacity</p>
+                          <p className="text-white font-medium">{Math.round(selectedStation.capacity)} kW</p>
+                        </div>
+                        <div>
+                          <p className="text-slate-500">Status</p>
+                          <p className={`text-white font-medium ${statusColor(selectedStation.status).text}`}>{selectedStation.status}</p>
+                        </div>
+                      </div>
+                    </div>
+                  </Popup>
                 )}
               </Map>
             </div>
-          </div>
-
-          <div className="rounded-[28px] border border-white/10 bg-white/5 p-6 backdrop-blur-xl">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs uppercase tracking-[0.28em] text-slate-400">User Workspace</p>
-                <h3 className="mt-2 text-xl font-semibold text-white">Station choice and charging decisions</h3>
+            )}
+            
+            {workspace === 'route' && (
+            <div className="relative h-[600px] bg-slate-900 flex items-center justify-center">
+              <div className="text-center">
+                <Navigation size={32} className="mx-auto mb-3 text-blue-400 opacity-50" />
+                <p className="text-slate-400 text-sm">Route planning map</p>
+                <p className="text-slate-500 text-xs mt-2">Multi-stop charging routes with optimized stops</p>
               </div>
-              <MapPin size={18} className="text-emerald-300" />
             </div>
-            <div className="mt-4 flex flex-wrap gap-2">
-              {[
-                { id: 'stations', label: 'Top 3 Stations' },
-                { id: 'strategy', label: 'Charge Strategy' },
-                { id: 'compare', label: 'Comparison' },
-              ].map((tab) => (
-                <button
-                  key={tab.id}
-                  onClick={() => setPanel(tab.id as typeof panel)}
-                  className={`rounded-full border px-4 py-2 text-sm transition ${
-                    panel === tab.id
-                      ? 'border-cyan-300/30 bg-cyan-300/10 text-white'
-                      : 'border-white/10 bg-white/5 text-slate-400 hover:text-white'
-                  }`}
-                >
-                  {tab.label}
-                </button>
-              ))}
-            </div>
-
-            {panel === 'stations' && (
-              <div className="mt-5 space-y-3">
-                {data.alternatives.slice(0, 3).map((station, index) => (
-                  <button
-                    key={station.id}
-                    onClick={() => setSelectedStationId(station.id)}
-                    className={`w-full rounded-3xl border p-4 text-left transition ${
-                      selectedStationId === station.id
-                        ? 'border-cyan-300/30 bg-cyan-300/10'
-                        : 'border-white/8 bg-[#0D131A] hover:border-white/16'
-                    }`}
-                  >
-                    <div className="flex items-start justify-between gap-4">
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="flex h-7 w-7 items-center justify-center rounded-full border border-white/10 bg-white/5 text-xs font-semibold text-slate-300">{index + 1}</span>
-                          <p className="font-medium text-white">{station.name}</p>
-                          {station.is_best && (
-                            <span className="rounded-full border border-emerald-400/20 bg-emerald-400/10 px-2 py-1 text-[11px] uppercase tracking-[0.18em] text-emerald-200">
-                              Best Fit
-                            </span>
-                          )}
-                        </div>
-                        <p className="mt-2 text-sm text-slate-400">{station.operator} • {station.reason}</p>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-sm font-semibold text-cyan-300">{station.distance_km.toFixed(1)} km</p>
-                        <p className="mt-2 text-xs text-slate-500">{station.estimated_total_minutes} min total</p>
-                      </div>
-                    </div>
-                  </button>
-                ))}
-              </div>
             )}
 
-            {selectedStation && panel === 'stations' && (
-              <div className="mt-5 rounded-[24px] border border-white/8 bg-[#0D131A] p-5">
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <p className="text-lg font-semibold text-white">{selectedStation.name}</p>
-                    <p className="mt-2 text-sm text-slate-400">{selectedStation.zone_name} • {selectedStation.operator || 'EV Operator'}</p>
+            {workspace === 'smart' && (
+            <div className="relative h-[600px] bg-slate-900 flex items-center justify-center">
+              <div className="text-center">
+                <Zap size={32} className="mx-auto mb-3 text-yellow-400 opacity-50" />
+                <p className="text-slate-400 text-sm">Smart charging schedule</p>
+                <p className="text-slate-500 text-xs mt-2">Optimized charging times based on grid load</p>
+              </div>
+            </div>
+            )}
+
+            {(workspace === 'vehicle' || workspace === 'history' || workspace === 'saved' || workspace === 'insights' || workspace === 'notifications' || workspace === 'wallet' || workspace === 'settings') && (
+            <div className="relative h-[600px] bg-slate-900 flex items-center justify-center">
+              <div className="text-center">
+                <AlertCircle size={32} className="mx-auto mb-3 text-slate-400 opacity-50" />
+                <p className="text-slate-400 text-sm">{workspace.charAt(0).toUpperCase() + workspace.slice(1)} workspace</p>
+                <p className="text-slate-500 text-xs mt-2">Coming soon - Detailed view for {workspace}</p>
+              </div>
+            </div>
+            )}
+          </section>
+
+          {/* ===== RIGHT PANEL ===== */}
+          <div className="space-y-4">
+            {workspace === 'charge' && chargeNow?.best_station_right_now && (
+              <section className="rounded-2xl border border-white/8 bg-white/[0.03] p-4">
+                <p className="text-[10px] uppercase tracking-[0.2em] text-slate-500 font-medium">Best Station Right Now</p>
+                <h3 className="mt-2 text-base font-semibold text-white">{chargeNow.best_station_right_now.station_name}</h3>
+                <p className="mt-1.5 text-sm text-slate-400 leading-relaxed">{chargeNow.best_station_right_now.why}</p>
+                <div className="mt-3 grid grid-cols-3 gap-2">
+                  <div className="rounded-lg bg-white/5 p-2.5">
+                    <p className="text-[10px] text-slate-500">Distance</p>
+                    <p className="mt-0.5 text-sm font-semibold text-white">{chargeNow.best_station_right_now.distance_km.toFixed(1)} km</p>
                   </div>
-                  <div className={`rounded-full border px-3 py-1 text-xs uppercase tracking-[0.18em] ${statusBadge(selectedStation.status)}`}>
-                    {selectedStation.status}
+                  <div className="rounded-lg bg-white/5 p-2.5">
+                    <p className="text-[10px] text-slate-500">Queue</p>
+                    <p className="mt-0.5 text-sm font-semibold text-white">{chargeNow.best_station_right_now.wait_time_minutes} min</p>
                   </div>
-                </div>
-                <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
-                  <div className="rounded-2xl border border-white/8 bg-white/5 p-3">
-                    <p className="text-slate-400">Current Load</p>
-                    <p className={`mt-1 font-semibold ${statusTone(selectedStation.status)}`}>{Math.round(selectedStation.load)} / {selectedStation.capacity} kW</p>
-                  </div>
-                  <div className="rounded-2xl border border-white/8 bg-white/5 p-3">
-                    <p className="text-slate-400">Queue</p>
-                    <p className="mt-1 font-semibold text-white">{Math.round(selectedStation.wait_time)} min</p>
-                  </div>
-                  <div className="rounded-2xl border border-white/8 bg-white/5 p-3">
-                    <p className="text-slate-400">Route Provider</p>
-                    <p className="mt-1 font-semibold text-white uppercase">{data.decision_support.route_provider}</p>
-                  </div>
-                  <div className="rounded-2xl border border-white/8 bg-white/5 p-3">
-                    <p className="text-slate-400">Battery Profile</p>
-                    <p className="mt-1 font-semibold text-white">{profile?.user_data?.batteryCapacityKwh ? `${profile.user_data.batteryCapacityKwh} kWh` : 'Not set'}</p>
+                  <div className="rounded-lg bg-white/5 p-2.5">
+                    <p className="text-[10px] text-slate-500">Utilization</p>
+                    <p className="mt-0.5 text-sm font-semibold text-white">{chargeNow.best_station_right_now.utilization_percent}%</p>
                   </div>
                 </div>
                 <a
-                  href={`https://www.google.com/maps/dir/?api=1&origin=${routeOrigin.lat},${routeOrigin.lng}&destination=${selectedStation.lat},${selectedStation.lng}&travelmode=driving&dir_action=navigate`}
+                  href={buildDirectionsUrl(chargeNow.best_station_right_now.station_lat, chargeNow.best_station_right_now.station_lng, routeOrigin)}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-cyan-300 px-4 py-3 text-sm font-semibold text-[#081019]"
+                  className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-400 py-2 text-sm font-semibold text-[#0B0F14] hover:bg-emerald-300 transition"
                 >
                   <Navigation size={14} />
-                  Open turn-by-turn directions
+                  Navigate Now
                 </a>
-              </div>
+              </section>
             )}
 
-            {panel === 'strategy' && (
-              <div className="mt-5 grid gap-4">
-                <div className="rounded-2xl border border-white/8 bg-[#0D131A] p-4">
-                  <p className="text-sm text-slate-400">Recommended Window</p>
-                  <p className="mt-1 text-2xl font-semibold text-white">{data.charging_recommendation?.time_label || 'Unavailable'}</p>
-                  <p className="mt-2 text-sm text-slate-400">{data.charging_recommendation?.impact}</p>
+            {workspace === 'charge' && chargeNow && (
+              <section className="rounded-2xl border border-white/8 bg-white/[0.03] p-4">
+                <p className="text-[10px] uppercase tracking-[0.2em] text-slate-500 font-medium">Charge Now Options</p>
+                <div className="mt-3 grid gap-3">
+                  <div className="rounded-xl border border-white/8 bg-white/5 p-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-sm font-semibold text-white">Wait time saved</p>
+                      <p className="text-sm font-semibold text-emerald-300">{chargeNow.wait_time_saved.minutes} min</p>
+                    </div>
+                    <p className="mt-1 text-xs text-slate-400">{chargeNow.wait_time_saved.why}</p>
+                  </div>
+
+                  {chargeNow.cheapest_option && (
+                    <div className="rounded-xl border border-white/8 bg-white/5 p-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="text-sm font-semibold text-white">Cheapest option</p>
+                        <p className="text-sm font-semibold text-slate-200">₹{Math.round(chargeNow.cheapest_option.estimated_cost_inr)}</p>
+                      </div>
+                      <p className="mt-1 text-xs text-slate-400">
+                        {chargeNow.cheapest_option.type === 'home'
+                          ? chargeNow.cheapest_option.why
+                          : `${chargeNow.cheapest_option.station_name} • ${chargeNow.cheapest_option.why}`}
+                      </p>
+                      {chargeNow.cheapest_option.type === 'station' && (
+                        <a
+                          href={buildDirectionsUrl(chargeNow.cheapest_option.station_lat, chargeNow.cheapest_option.station_lng, routeOrigin)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="mt-2 inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs text-slate-300 hover:bg-white/10 hover:text-white transition"
+                        >
+                          <Navigation size={12} />
+                          Navigate
+                        </a>
+                      )}
+                    </div>
+                  )}
+
+                  {chargeNow.fastest_option && (
+                    <div className="rounded-xl border border-white/8 bg-white/5 p-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="text-sm font-semibold text-white">Fastest option</p>
+                        <p className="text-sm font-semibold text-cyan-200">{chargeNow.fastest_option.estimated_total_minutes} min</p>
+                      </div>
+                      <p className="mt-1 text-xs text-slate-400">{chargeNow.fastest_option.station_name} • {chargeNow.fastest_option.why}</p>
+                      <a
+                        href={buildDirectionsUrl(chargeNow.fastest_option.station_lat, chargeNow.fastest_option.station_lng, routeOrigin)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="mt-2 inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs text-slate-300 hover:bg-white/10 hover:text-white transition"
+                      >
+                        <Navigation size={12} />
+                        Navigate
+                      </a>
+                    </div>
+                  )}
+
+                  {chargeNow.lowest_congestion_option && (
+                    <div className="rounded-xl border border-white/8 bg-white/5 p-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="text-sm font-semibold text-white">Lowest congestion</p>
+                        <p className="text-sm font-semibold text-amber-200">{chargeNow.lowest_congestion_option.utilization_percent}%</p>
+                      </div>
+                      <p className="mt-1 text-xs text-slate-400">{chargeNow.lowest_congestion_option.station_name} • {chargeNow.lowest_congestion_option.why}</p>
+                      <a
+                        href={buildDirectionsUrl(chargeNow.lowest_congestion_option.station_lat, chargeNow.lowest_congestion_option.station_lng, routeOrigin)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="mt-2 inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs text-slate-300 hover:bg-white/10 hover:text-white transition"
+                      >
+                        <Navigation size={12} />
+                        Navigate
+                      </a>
+                    </div>
+                  )}
                 </div>
-                <div className="rounded-2xl border border-white/8 bg-[#0D131A] p-4">
-                  <p className="text-sm text-slate-400">Home Charging Guidance</p>
-                  <p className="mt-1 text-base font-semibold text-white">
-                    {data.decision_support.home_charge_recommended ? 'Use home charging for routine top-ups and keep public charging for urgent sessions.' : 'Public charging remains reasonable for this trip profile.'}
-                  </p>
-                  <p className="mt-2 text-sm text-slate-400">
-                    {data.decision_support.home_cost_inr != null
-                      ? `Home session estimate: INR ${data.decision_support.home_cost_inr}.`
-                      : 'No home charging access saved in your profile.'}
-                  </p>
-                </div>
-              </div>
+              </section>
             )}
 
-            {panel === 'compare' && (
-              <div className="mt-5 overflow-hidden rounded-[22px] border border-white/8">
-                <table className="min-w-full divide-y divide-white/8 text-sm">
-                  <thead className="bg-white/5 text-slate-400">
-                    <tr>
-                      <th className="px-4 py-3 text-left font-medium">Station</th>
-                      <th className="px-4 py-3 text-left font-medium">Distance</th>
-                      <th className="px-4 py-3 text-left font-medium">Wait</th>
-                      <th className="px-4 py-3 text-left font-medium">Total</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-white/8 bg-[#0D131A]">
-                    {data.alternatives.slice(0, 3).map((option) => (
-                      <tr key={option.id} className={option.is_best ? 'bg-emerald-400/5' : ''}>
-                        <td className="px-4 py-3 text-white">{option.name}</td>
-                        <td className="px-4 py-3 text-slate-300">{option.distance_km.toFixed(1)} km</td>
-                        <td className="px-4 py-3 text-slate-300">{option.wait_time_minutes} min</td>
-                        <td className="px-4 py-3 text-slate-300">{option.estimated_total_minutes} min</td>
-                      </tr>
+            {/* Existing Decision Engine (kept for now for other tabs / fallback) */}
+            {workspace !== 'charge' && recommendation && (
+              <section className="rounded-2xl border border-white/8 bg-white/[0.03] p-4">
+                <p className="text-[10px] uppercase tracking-[0.2em] text-slate-500 font-medium">Recommended Action</p>
+                <h3 className="mt-2 text-base font-semibold text-white">{recommendation.headline}</h3>
+                <p className="mt-1.5 text-sm text-slate-400 leading-relaxed">{recommendation.why}</p>
+                {recommendation.benefits.length > 0 && (
+                  <ul className="mt-3 space-y-1.5">
+                    {recommendation.benefits.map((benefit, i) => (
+                      <li key={i} className="flex items-start gap-2 text-sm text-slate-300">
+                        <span className="mt-1 h-1.5 w-1.5 rounded-full bg-emerald-400 flex-shrink-0" />
+                        {benefit}
+                      </li>
                     ))}
-                  </tbody>
-                </table>
+                  </ul>
+                )}
+                <div className="mt-3 pt-3 border-t border-white/8 flex items-center justify-between">
+                  <span className="text-[10px] text-slate-500">Confidence</span>
+                  <span className="text-xs font-medium text-slate-300">{recommendation.confidence}</span>
+                </div>
+                {recommendedStation && recommendation.type !== 'home_charge' && (
+                  <a
+                    href={buildDirectionsUrl(recommendedStation.lat, recommendedStation.lng, routeOrigin)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-400 py-2 text-sm font-semibold text-[#0B0F14] hover:bg-emerald-300 transition"
+                  >
+                    <Navigation size={14} />
+                    Navigate Now
+                  </a>
+                )}
+              </section>
+            )}
+
+            {/* SESSION ESTIMATE */}
+            {workspace === 'charge' && decision && (
+              <section className="rounded-2xl border border-white/8 bg-white/[0.03] p-4">
+                <p className="text-[10px] uppercase tracking-[0.2em] text-slate-500 font-medium">Session Estimate</p>
+                <div className="mt-3 grid grid-cols-2 gap-3">
+                  <div className="rounded-lg bg-white/5 p-2.5">
+                    <p className="text-[10px] text-slate-500">Total Time</p>
+                    <p className="mt-0.5 text-sm font-semibold text-white">{decision.estimated_session_minutes} min</p>
+                  </div>
+                  <div className="rounded-lg bg-white/5 p-2.5">
+                    <p className="text-[10px] text-slate-500">Cost</p>
+                    <p className="mt-0.5 text-sm font-semibold text-white">₹{decision.public_cost_inr}</p>
+                  </div>
+                  {decision.savings_vs_home_inr && decision.savings_vs_home_inr > 0 && (
+                    <div className="col-span-2 rounded-lg bg-emerald-400/8 p-2.5">
+                      <p className="text-[10px] text-emerald-300/70">Save with home charging</p>
+                      <p className="mt-0.5 text-sm font-semibold text-emerald-300">₹{decision.savings_vs_home_inr} less</p>
+                    </div>
+                  )}
+                </div>
+              </section>
+            )}
+
+            {/* BEST CHARGING WINDOW */}
+            {workspace === 'charge' && bestTimeWindow && (
+              <section className="rounded-2xl border border-white/8 bg-white/[0.03] p-4">
+                <p className="text-[10px] uppercase tracking-[0.2em] text-slate-500 font-medium">Best Charging Window</p>
+                <div className="mt-3 flex items-baseline gap-2">
+                  <p className="text-lg font-bold text-emerald-300">{formatHour(bestTimeWindow.hour)}</p>
+                  <span className="text-xs text-slate-500">· {Math.round(bestTimeWindow.predicted_demand)} kW predicted</span>
+                </div>
+                <div className="mt-2 flex items-center gap-3 text-[10px] text-slate-500">
+                  <span>Range: {Math.round(bestTimeWindow.confidence_lower)}–{Math.round(bestTimeWindow.confidence_upper)} kW</span>
+                </div>
+              </section>
+            )}
+
+            {/* STATION OPTIONS */}
+            {workspace === 'charge' && stationOptions.length > 0 && (
+              <section className="rounded-2xl border border-white/8 bg-white/[0.03] p-4">
+                <p className="text-[10px] uppercase tracking-[0.2em] text-slate-500 font-medium">Nearby Stations</p>
+                <div className="mt-3 space-y-2">
+                  {stationOptions.map((station) => {
+                    const color = statusColor(station.status);
+                    const isRecommended = station.id === recommendedStation?.id;
+                    return (
+                      <button
+                        key={station.id}
+                        onClick={() => {
+                          setSelectedStation(station);
+                          setViewState((prev) => ({ ...prev, longitude: station.lng, latitude: station.lat, zoom: 14 }));
+                        }}
+                        className={`w-full text-left rounded-lg border p-2.5 transition ${
+                          isRecommended
+                            ? `${color.bg} ${color.border}`
+                            : 'border-transparent bg-white/5 hover:bg-white/8'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <span className="h-2 w-2 rounded-full flex-shrink-0" style={{ backgroundColor: color.dot }} />
+                            <span className="text-sm font-medium text-white truncate">{station.name}</span>
+                          </div>
+                          <ChevronRight size={14} className="text-slate-500 flex-shrink-0" />
+                        </div>
+                        <div className="mt-1 flex items-center gap-3 text-[11px] text-slate-500">
+                          <span>{station.distance.toFixed(1)} km</span>
+                          <span>{Math.round(station.wait_time)} min</span>
+                          {isRecommended && <span className="text-emerald-400 font-medium">Best option</span>}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </section>
+             )}
+
+            {/* Route Planner Workspace */}
+            {workspace === 'route' && (
+              <>
+                <section className="rounded-2xl border border-white/8 bg-white/[0.03] p-4">
+                  <p className="text-[10px] uppercase tracking-[0.2em] text-slate-500 font-medium">Route Planner</p>
+                  <div className="mt-3 space-y-3">
+                    <div className="rounded-lg bg-white/5 p-3">
+                      <p className="text-xs text-slate-400 mb-2">Charging stops recommended</p>
+                      <p className="text-2xl font-semibold text-white">2-3</p>
+                      <p className="text-xs text-slate-500 mt-1">For optimal journey time</p>
+                    </div>
+                    <button className="w-full bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 rounded-lg transition">Plan Route</button>
+                  </div>
+                </section>
+              </>
+            )}
+
+            {/* Smart Charging Workspace */}
+            {workspace === 'smart' && (
+              <>
+                <section className="rounded-2xl border border-white/8 bg-white/[0.03] p-4">
+                  <p className="text-[10px] uppercase tracking-[0.2em] text-slate-500 font-medium">Charging Schedule</p>
+                  <div className="mt-3 space-y-3">
+                    <div className="rounded-lg bg-emerald-400/10 border border-emerald-400/20 p-3">
+                      <p className="text-xs text-emerald-300 font-medium">Best time to charge</p>
+                      <p className="text-lg font-semibold text-white mt-1">11 PM - 2 AM</p>
+                      <p className="text-xs text-slate-400 mt-1">Low grid load period</p>
+                    </div>
+                    <button className="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-semibold py-2 rounded-lg transition">Schedule Charging</button>
+                  </div>
+                </section>
+              </>
+            )}
+
+            {/* Vehicle Workspace */}
+            {workspace === 'vehicle' && (
+              <>
+                <section className="rounded-2xl border border-white/8 bg-white/[0.03] p-4">
+                  <p className="text-[10px] uppercase tracking-[0.2em] text-slate-500 font-medium">Vehicle Profile</p>
+                  <div className="mt-3 space-y-2">
+                    <div className="rounded-lg bg-white/5 p-2.5">
+                      <p className="text-xs text-slate-400">Model</p>
+                      <p className="text-sm font-semibold text-white mt-0.5">{profile?.user_data?.vehicleModel || 'Tesla Model 3'}</p>
+                    </div>
+                    <div className="rounded-lg bg-white/5 p-2.5">
+                      <p className="text-xs text-slate-400">Battery</p>
+                      <p className="text-sm font-semibold text-white mt-0.5">{profile?.user_data?.batteryCapacityKwh || 75} kWh</p>
+                    </div>
+                  </div>
+                </section>
+              </>
+            )}
+
+            {/* History Workspace */}
+            {workspace === 'history' && (
+              <>
+                <section className="rounded-2xl border border-white/8 bg-white/[0.03] p-4">
+                  <p className="text-[10px] uppercase tracking-[0.2em] text-slate-500 font-medium">Recent Sessions</p>
+                  <div className="mt-3 space-y-2">
+                    {[1, 2, 3].map((i) => (
+                      <div key={i} className="rounded-lg bg-white/5 p-2.5">
+                        <div className="flex justify-between items-start">
+                          <p className="text-sm font-semibold text-white">Charging Station {i}</p>
+                          <span className="text-xs text-slate-400">2 days ago</span>
+                        </div>
+                        <p className="text-xs text-slate-400 mt-1">42 kWh • ₹280</p>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              </>
+            )}
+
+            {/* Saved Workspace */}
+            {workspace === 'saved' && (
+              <>
+                <section className="rounded-2xl border border-white/8 bg-white/[0.03] p-4">
+                  <p className="text-[10px] uppercase tracking-[0.2em] text-slate-500 font-medium">Saved Items</p>
+                  <div className="mt-3 space-y-2">
+                    <div className="rounded-lg bg-white/5 p-2.5">
+                      <p className="text-sm font-semibold text-white">Whitefield Station</p>
+                      <p className="text-xs text-slate-400 mt-1">5.2 km away</p>
+                    </div>
+                    <div className="rounded-lg bg-white/5 p-2.5">
+                      <p className="text-sm font-semibold text-white">Work Commute Route</p>
+                      <p className="text-xs text-slate-400 mt-1">15 km • 2 stops</p>
+                    </div>
+                  </div>
+                </section>
+              </>
+            )}
+
+            {/* Insights Workspace */}
+            {workspace === 'insights' && (
+              <>
+                <section className="rounded-2xl border border-white/8 bg-white/[0.03] p-4">
+                  <p className="text-[10px] uppercase tracking-[0.2em] text-slate-500 font-medium">Your Insights</p>
+                  <div className="mt-3 space-y-2">
+                    <div className="rounded-lg bg-blue-400/10 border border-blue-400/20 p-2.5">
+                      <p className="text-xs text-blue-300">Average charge time</p>
+                      <p className="text-lg font-semibold text-white mt-0.5">52 min</p>
+                    </div>
+                    <div className="rounded-lg bg-green-400/10 border border-green-400/20 p-2.5">
+                      <p className="text-xs text-green-300">Monthly savings</p>
+                      <p className="text-lg font-semibold text-white mt-0.5">₹420</p>
+                    </div>
+                  </div>
+                </section>
+              </>
+            )}
+
+            {/* Notifications/Alerts Workspace */}
+            {workspace === 'notifications' && (
+              <>
+                <section className="rounded-2xl border border-white/8 bg-white/[0.03] p-4">
+                  <p className="text-[10px] uppercase tracking-[0.2em] text-slate-500 font-medium">Notifications</p>
+                  <div className="mt-3 space-y-2">
+                    <div className="rounded-lg bg-amber-400/10 border border-amber-400/20 p-2.5">
+                      <p className="text-xs font-medium text-amber-300">Station maintenance</p>
+                      <p className="text-xs text-slate-400 mt-1">Whitefield station closing 2-4 PM</p>
+                    </div>
+                    <div className="rounded-lg bg-white/5 p-2.5">
+                      <p className="text-xs text-slate-300">Promo: 20% off off-peak charging</p>
+                      <p className="text-xs text-slate-500 mt-1">Available until Friday</p>
+                    </div>
+                  </div>
+                </section>
+              </>
+            )}
+
+            {/* Wallet Workspace */}
+            {workspace === 'wallet' && (
+              <>
+                <section className="rounded-2xl border border-white/8 bg-white/[0.03] p-4">
+                  <p className="text-[10px] uppercase tracking-[0.2em] text-slate-500 font-medium">Wallet & Billing</p>
+                  <div className="mt-3 space-y-2">
+                    <div className="rounded-lg bg-white/5 p-2.5">
+                      <p className="text-xs text-slate-400">Available Balance</p>
+                      <p className="text-lg font-semibold text-emerald-300 mt-0.5">₹2,450</p>
+                    </div>
+                    <div className="rounded-lg bg-white/5 p-2.5">
+                      <p className="text-xs text-slate-400">This month</p>
+                      <p className="text-sm font-semibold text-white mt-0.5">₹1,820 spent</p>
+                    </div>
+                  </div>
+                </section>
+              </>
+            )}
+
+            {/* Settings Workspace */}
+            {workspace === 'settings' && (
+              <>
+                <section className="rounded-2xl border border-white/8 bg-white/[0.03] p-4">
+                  <p className="text-[10px] uppercase tracking-[0.2em] text-slate-500 font-medium">Settings</p>
+                  <div className="mt-3 space-y-3">
+                    <button className="w-full text-left rounded-lg border border-white/8 bg-white/5 p-3 hover:bg-white/10 transition">
+                      <p className="text-sm font-medium text-white">Account Settings</p>
+                    </button>
+                    <button className="w-full text-left rounded-lg border border-white/8 bg-white/5 p-3 hover:bg-white/10 transition">
+                      <p className="text-sm font-medium text-white">Preferences</p>
+                    </button>
+                    <button className="w-full text-left rounded-lg border border-white/8 bg-white/5 p-3 hover:bg-white/10 transition">
+                      <p className="text-sm font-medium text-white">Privacy & Security</p>
+                    </button>
+                  </div>
+                </section>
+              </>
+            )}
+
+            {/* DEMO MODE NOTICE */}
+            {isDemoMode && (
+              <div className="rounded-lg border border-amber-400/20 bg-amber-400/8 p-3">
+                <p className="text-[11px] text-amber-200/80">
+                  <span className="font-medium">Demo Mode:</span> Showing Bengaluru EV grid data. Real-time predictions use synthetic demand patterns.
+                </p>
               </div>
             )}
           </div>
-        </section>
-
-        {error && (
-          <div className="rounded-2xl border border-amber-400/20 bg-amber-400/10 px-4 py-3 text-sm text-amber-100">
-            {error}
-          </div>
-        )}
+        </div>
       </main>
     </div>
   );
