@@ -436,7 +436,7 @@ export default function OperatorDashboard() {
         </div>
       </div>
 
-      <main className="relative z-10 mx-auto flex max-w-[1380px] flex-col gap-5 px-4 py-5 sm:px-6">
+      <main className="relative z-10 mx-auto flex max-w-[1320px] flex-col gap-5 px-4 py-5 sm:px-6">
         {workspace === 'forecast' && forecastCenter && horizonPayload && (
           <section className="rounded-[28px] border border-white/10 bg-white/5 p-6 shadow-2xl shadow-black/20 backdrop-blur-xl">
             <div className="flex flex-wrap items-start justify-between gap-4">
@@ -943,7 +943,7 @@ export default function OperatorDashboard() {
             <div className="mt-4 rounded-2xl border border-white/8 bg-[#0D131A] p-4 text-sm text-slate-300">
               Click a zone button or marker to switch the forecast and planning view. The highlighted marker tracks the active operating zone.
             </div>
-            <div className="mt-4 h-[260px] overflow-hidden rounded-[22px] border border-white/8">
+            <div className="mt-4 h-[220px] overflow-hidden rounded-[22px] border border-white/8">
               <Map
                 ref={overviewMapRef}
                 {...viewState}
@@ -1132,7 +1132,7 @@ export default function OperatorDashboard() {
                       Fullscreen
                     </button>
                   </div>
-                  <div className="h-[460px] overflow-hidden rounded-xl border border-white/10">
+                  <div className="h-[400px] lg:h-[440px] overflow-hidden rounded-xl border border-white/10">
                     <Map
                       ref={operationsMapRef}
                       {...viewState}

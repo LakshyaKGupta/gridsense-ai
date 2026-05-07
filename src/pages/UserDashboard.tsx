@@ -299,7 +299,7 @@ export default function UserDashboard() {
       </div>
 
       <main className="relative z-10 mx-auto max-w-7xl px-4 py-4 sm:px-6">
-        <div className="grid items-start gap-4 xl:grid-cols-[1.25fr_0.75fr]">
+        <div className="grid items-start gap-4 lg:grid-cols-[1.18fr_0.82fr]">
           <section ref={mapShellRef} className="overflow-hidden rounded-[28px] border border-white/10 bg-white/5 backdrop-blur-xl">
             <div className="flex flex-wrap items-start justify-between gap-4 border-b border-white/8 px-5 py-4">
               <div>
@@ -337,7 +337,7 @@ export default function UserDashboard() {
             </div>
 
             {shouldShowMap ? (
-            <div className="relative h-[560px] lg:h-[620px]">
+            <div className="relative h-[440px] lg:h-[500px] xl:h-[540px]">
               <Map
                 ref={mapRef}
                 {...viewState}
@@ -473,7 +473,7 @@ export default function UserDashboard() {
               )}
             </div>
             ) : (
-              <div className="grid min-h-[560px] content-start gap-4 p-5">
+              <div className="grid min-h-[460px] content-start gap-4 p-5">
                 {workspace === 'history' && (
                   <>
                     <div className="grid gap-3 sm:grid-cols-3">
@@ -584,7 +584,7 @@ export default function UserDashboard() {
             )}
           </section>
 
-          <aside className="space-y-4 xl:sticky xl:top-28">
+          <aside className="space-y-4 lg:sticky lg:top-28">
             {workspace === 'charge' && (
               <>
                 <section className="rounded-[28px] border border-white/10 bg-white/5 p-5 backdrop-blur-xl">
@@ -697,7 +697,7 @@ export default function UserDashboard() {
                     <div className="mt-1 text-xs text-slate-500">{batteryPercent}% remaining</div>
                   </label>
                   <button
-                    onClick={() => void fetchDashboard(selectedStationId)}
+                    onClick={() => void fetchDashboard(null)}
                     className="rounded-2xl bg-cyan-300 px-4 py-3 text-sm font-semibold text-[#081019]"
                   >
                     Recalculate route

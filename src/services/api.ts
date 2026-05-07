@@ -16,8 +16,6 @@ import {
   mockDashboardData,
   mockFailureScenario,
   mockModelMetrics,
-  mockNearbyStations,
-  mockRecommendations,
   mockRobustness,
   mockROI,
   mockSensitivity,
@@ -832,7 +830,12 @@ function generateForecastCurve(baseCapacity: number): ForecastPoint[] {
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const fallback = getFallbackResponse<T>(path);
-  if (fallback !== undefined && shouldUseLocalFallback(init?.headers)) {
+  const allowForcedLocalFallback =
+    !path.startsWith('/portal/') &&
+    !path.startsWith('/stations/nearby') &&
+    path !== '/locations/recommend';
+
+  if (fallback !== undefined && allowForcedLocalFallback && shouldUseLocalFallback(init?.headers)) {
     isBackendLive = false;
     return fallback;
   }
@@ -1127,14 +1130,12 @@ function getFallbackResponse<T>(path: string): T | undefined {
   if (path === '/dashboard/summary') return mockDashboardData as T;
   if (path === '/alerts/' || path === '/alerts') return mockAlerts as T;
   if (path === '/locations/roi/' || path === '/locations/roi') return mockROI as T;
-  if (path === '/locations/recommend') return mockRecommendations as T;
   if (path === '/realtime/demand') return mockDashboardData.realtime_snapshot as T;
   if (path.startsWith('/demand/')) return getMockDemandPrediction(zoneId) as T;
   if (path.startsWith('/forecast/')) return getMockForecast(zoneId) as T;
   if (path.startsWith('/optimize/')) return getMockOptimization(zoneId) as T;
   if (path.startsWith('/impact/')) return getMockImpact(zoneId) as T;
   if (path === '/simulate/run') return mockSimulation as T;
-  if (path.startsWith('/stations/nearby')) return mockNearbyStations as T;
   if (path === '/advanced/data/status') return { is_real_data: false } as T;
   if (path.startsWith('/advanced/impact/realistic')) return getMockRealisticImpact(zoneId) as T;
   if (path === '/advanced/baselines/compare') return mockBaselines as T;

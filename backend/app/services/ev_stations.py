@@ -5,22 +5,42 @@ import re
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 from app.services.zone_catalog import nearest_zone
+from app.services.simulation_engine import generate_states_for_stations, register_osm_stations
+
+REAL_BACKUP_STATIONS = [
+    {"id": 900001, "name": "Ather Charging Grid", "lat": 12.9756680, "lng": 77.6413089, "operator": "Ather Energy", "source": "backup_osm"},
+    {"id": 900002, "name": "Ather Charging Station", "lat": 12.9311453, "lng": 77.6238461, "operator": "ChargePoint", "source": "backup_osm"},
+    {"id": 900003, "name": "Battery Swap", "lat": 12.9285835, "lng": 77.6241904, "operator": "ChargePoint", "source": "backup_osm"},
+    {"id": 900004, "name": "Battery Swapping Station", "lat": 12.8894274, "lng": 77.5563647, "operator": "Battery Swap", "source": "backup_osm"},
+    {"id": 900005, "name": "Honda e:swap", "lat": 13.0000143, "lng": 77.5499059, "operator": "Honda e:swap", "source": "backup_osm"},
+    {"id": 900006, "name": "Honda e:swap", "lat": 12.9781045, "lng": 77.6389105, "operator": "Honda e:swap", "source": "backup_osm"},
+    {"id": 900007, "name": "Honda e:swap", "lat": 12.9383537, "lng": 77.5802162, "operator": "Honda e:swap", "source": "backup_osm"},
+    {"id": 900008, "name": "Honda e:swap", "lat": 12.9217078, "lng": 77.5805052, "operator": "Honda e:swap", "source": "backup_osm"},
+    {"id": 900009, "name": "Honda e:swap", "lat": 13.0330528, "lng": 77.5337570, "operator": "Honda e:swap", "source": "backup_osm"},
+    {"id": 900010, "name": "Honda e:swap", "lat": 12.9934270, "lng": 77.7043141, "operator": "Honda e:swap", "source": "backup_osm"},
+    {"id": 900011, "name": "Honda e:swap", "lat": 12.9861844, "lng": 77.6156891, "operator": "Honda e:swap", "source": "backup_osm"},
+    {"id": 900012, "name": "Honda e:swap", "lat": 13.0235213, "lng": 77.5497316, "operator": "Honda e:swap", "source": "backup_osm"},
+    {"id": 900013, "name": "Honda e:swap", "lat": 13.0235317, "lng": 77.5497115, "operator": "Honda e:swap", "source": "backup_osm"},
+    {"id": 900014, "name": "inGO", "lat": 12.9712776, "lng": 77.6078832, "operator": "inGO", "source": "backup_osm"},
+    {"id": 900015, "name": "Jio BP", "lat": 13.0878799, "lng": 77.6601841, "operator": "Jio BP", "source": "backup_osm"},
+    {"id": 900016, "name": "Magenta ChargeGrid Charging Station", "lat": 12.9154635, "lng": 77.6158909, "operator": "Magenta", "source": "backup_osm"},
+    {"id": 900017, "name": "Ola Hyper Charger", "lat": 12.9337755, "lng": 77.6236693, "operator": "Ola Electric", "source": "backup_osm"},
+    {"id": 900018, "name": "Ola Hypercharger", "lat": 12.9322172, "lng": 77.6142725, "operator": "Ola Electric", "source": "backup_osm"},
+    {"id": 900019, "name": "Pulse", "lat": 12.9805484, "lng": 77.5978893, "operator": "Pulse", "source": "backup_osm"},
+    {"id": 900020, "name": "BluSmart Charging Station", "lat": 13.1776646, "lng": 77.6630831, "operator": "BluSmart", "source": "backup_osm"},
+    {"id": 900021, "name": "BluSmart Charging Station", "lat": 13.1821565, "lng": 77.6710546, "operator": "BluSmart", "source": "backup_osm"},
+    {"id": 900022, "name": "GLIDA Charging Station", "lat": 13.1831411, "lng": 77.6760596, "operator": "GLIDA", "source": "backup_osm"},
+    {"id": 900023, "name": "Ola Hypercharger Richmond Road", "lat": 12.9654060, "lng": 77.6002473, "operator": "Ola Electric", "source": "backup_osm"},
+]
 
 class EVStationFetcher:
     """Fetches real EV charging stations from OpenStreetMap via Overpass API"""
     
     OVERPASS_URL = "https://overpass-api.de/api/interpreter"
-    FALLBACK_STATIONS = [
-        {"id": 1, "name": "Tesla Charging Hub Indiranagar", "lat": 12.9784, "lng": 77.6408, "operator": "Tesla"},
-        {"id": 2, "name": "ABL Charging Hub Koramangala", "lat": 12.9279, "lng": 77.6271, "operator": "ABL"},
-        {"id": 3, "name": "ChargePoint Whitefield", "lat": 12.9698, "lng": 77.7499, "operator": "ChargePoint"},
-        {"id": 4, "name": "EESL Charging Hub Electronic City", "lat": 12.8399, "lng": 77.6770, "operator": "EESL"},
-        {"id": 5, "name": "ABB Charging Hub Jayanagar", "lat": 12.9299, "lng": 77.5826, "operator": "ABB"},
-    ]
     
     def __init__(self):
-        self.cached_stations = None
-        self.last_fetch = None
+        self.cached_stations: List[Dict] = []
+        self.last_fetch: Optional[datetime] = None
 
     def _normalize_station_name(self, name: str, operator: str, station_id: int) -> str:
         english_variant = name.strip()
@@ -39,10 +59,10 @@ class EVStationFetcher:
     
     async def fetch_bengaluru_stations(self) -> List[Dict]:
         """Fetch EV stations in Bengaluru area using Overpass API"""
-        # Check cache first (15 min TTL)
+        # Check cache first (60 min TTL)
         if self.cached_stations and self.last_fetch:
             age = (datetime.now() - self.last_fetch).total_seconds()
-            if age < 900:  # 15 minutes
+            if age < 3600:
                 return self.cached_stations
         
         try:
@@ -56,7 +76,7 @@ class EVStationFetcher:
             out center;
             """
             
-            async with httpx.AsyncClient(timeout=30.0) as client:
+            async with httpx.AsyncClient(timeout=12.0) as client:
                 response = await client.post(
                     self.OVERPASS_URL,
                     data={"data": query},
@@ -87,27 +107,27 @@ class EVStationFetcher:
                                 })
                     
                     if stations:
-                        self.cached_stations = stations
+                        self.cached_stations = register_osm_stations(stations)
                         self.last_fetch = datetime.now()
-                        return stations
+                        return self.cached_stations
                     
         except Exception as e:
             print(f"Overpass API error: {e}")
         
-        # Return fallback stations if API fails
-        return self.FALLBACK_STATIONS
+        if not self.cached_stations:
+            self.cached_stations = register_osm_stations(REAL_BACKUP_STATIONS)
+            self.last_fetch = datetime.now()
+        return self.cached_stations
     
-    def get_stations_with_status(self, user_location: Optional[Dict] = None) -> List[Dict]:
-        """Add derived status to stations based on time and location"""
-        current_hour = datetime.now().hour
-        
-        stations = self.cached_stations or self.FALLBACK_STATIONS
-        
-        # Evening peak hours: 7-9 PM
-        is_peak = 19 <= current_hour <= 21
-        
+    def get_stations_with_status(self, user_location: Optional[Dict] = None, limit: Optional[int] = None) -> List[Dict]:
+        """Enrich registered OSM stations with deterministic synthetic live state."""
+        stations = self.cached_stations or []
+        if not stations:
+            return []
+
+        enriched = generate_states_for_stations(stations, datetime.now())
         result = []
-        for i, station in enumerate(stations):
+        for station in enriched:
             # Calculate distance from user location if available
             distance = 1.5
             if user_location:
@@ -116,34 +136,17 @@ class EVStationFetcher:
                     station["lat"], station["lng"]
                 )
             
-            # Derive a stable, time-sensitive load profile from station order and hour.
-            base_load = 95 + (i * 17)
-            peak_factor = 1.32 if is_peak else 0.72 if current_hour < 6 or current_hour > 22 else 1.0
-            diurnal_adjustment = math.sin(((current_hour + i) / 24) * math.pi * 2) * 12
-            distance_pressure = max(0.0, 8.0 - min(distance, 8.0)) * 3.5
-            load = (base_load * peak_factor) + diurnal_adjustment + distance_pressure
-            
-            load = max(30, min(300, load))
-            
-            status = "GREEN"
-            if load > 220:
-                status = "RED"
-            elif load > 150:
-                status = "YELLOW"
-            
             result.append({
                 **station,
-                "load": round(load, 1),
-                "capacity": 300,
-                "status": status,
                 "distance": round(distance, 1),
-                "wait_time": round(max(0, (load / 50) - 3), 1) if load > 150 else 0,
-                "zone_name": nearest_zone(station["lat"], station["lng"])["name"],
+                "zone_name": station.get("zone_name") or nearest_zone(station["lat"], station["lng"])["name"],
+                "utilization_percent": round((station["load"] / max(station["capacity"], 1)) * 100, 1),
+                "connector_types": ["CCS2", "Type 2"] if station.get("zone_Commercial") else ["Type 2", "AC001"],
+                "charging_speed": "rapid" if station["capacity"] >= 240 else "fast" if station["capacity"] >= 170 else "slow",
             })
         
-        # Sort by distance
-        result.sort(key=lambda x: x["distance"])
-        return result
+        result.sort(key=lambda x: (x["distance"], -x["capacity"]))
+        return result[:limit] if limit else result
     
     def _haversine_distance(self, lat1: float, lon1: float, lat2: float, lon2: float) -> float:
         R = 6371
@@ -159,8 +162,8 @@ station_fetcher = EVStationFetcher()
 
 async def get_real_stations(user_location: Optional[Dict] = None) -> List[Dict]:
     """Get real EV stations with status"""
-    stations = await station_fetcher.fetch_bengaluru_stations()
-    return station_fetcher.get_stations_with_status(user_location)
+    await station_fetcher.fetch_bengaluru_stations()
+    return station_fetcher.get_stations_with_status(user_location, limit=24)
 
 
 async def calculate_route(user_lat: float, user_lng: float, station_lat: float, station_lng: float) -> Dict:

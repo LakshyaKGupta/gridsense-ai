@@ -13,9 +13,19 @@ class OptimizationResult(BaseModel):
     confidence: float
 
 class LocationRecommendation(BaseModel):
+    station_id: int
     zone_id: int
     zone_name: str
+    name: str
+    lat: float
+    lng: float
     score: float
+    grid_stress_score: float
+    predicted_demand: float
+    wait_time: float
+    capacity: float
+    status: str
+    operator: str
     justification: str
 
 class SimulationResult(BaseModel):

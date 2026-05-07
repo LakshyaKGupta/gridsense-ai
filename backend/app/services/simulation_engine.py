@@ -1,13 +1,212 @@
 import numpy as np
 import pandas as pd
 from datetime import datetime, timedelta
-from typing import List, Dict
+from typing import List, Dict, Optional
 import random
 import asyncio
+import math
 from app.utils.cache import get_cache, set_cache, async_get_cache, async_set_cache
 from app.database import SessionLocal
 from app.models import DemandLog, Zone
+from app.services.zone_catalog import nearest_zone
 
+
+COMMERCIAL_KEYWORDS = (
+    "tech", "park", "mall", "metro", "airport", "hub", "plaza", "office",
+    "business", "itpl", "station", "city", "road", "market", "center",
+)
+INDUSTRIAL_KEYWORDS = (
+    "industrial", "factory", "plant", "logistics", "warehouse", "electronic city",
+    "phase", "manufacturing", "fleet", "depot",
+)
+RESIDENTIAL_KEYWORDS = (
+    "layout", "nagar", "colony", "residency", "homes", "apartment", "block",
+    "enclave", "garden", "villa",
+)
+
+STATION_REGISTRY: Dict[int, Dict] = {}
+STATION_STATE_CACHE: Dict[str, Dict] = {}
+
+
+def _station_rng_seed(station_id: int, timestamp: datetime, salt: int = 0) -> int:
+    hour_bucket = timestamp.year * 1000000 + timestamp.month * 10000 + timestamp.day * 100 + timestamp.hour
+    return (int(station_id) * 1315423911 + hour_bucket + salt) & 0xFFFFFFFF
+
+
+def _canonical_station(station: Dict) -> Dict:
+    lat = float(station.get("lat", station.get("latitude", 0.0)))
+    lng = float(station.get("lng", station.get("lon", station.get("longitude", 0.0))))
+    return {
+        "id": int(station["id"]),
+        "name": str(station.get("name") or f"EV Station {station['id']}"),
+        "lat": lat,
+        "lng": lng,
+        "operator": str(station.get("operator") or "Unknown"),
+        "source": str(station.get("source") or "osm"),
+    }
+
+
+def assign_station_zone(station: Dict) -> Dict[str, int]:
+    normalized = _canonical_station(station)
+    lowered = normalized["name"].lower()
+
+    if any(keyword in lowered for keyword in COMMERCIAL_KEYWORDS):
+        zone_type = "commercial"
+    elif any(keyword in lowered for keyword in INDUSTRIAL_KEYWORDS):
+        zone_type = "industrial"
+    elif any(keyword in lowered for keyword in RESIDENTIAL_KEYWORDS):
+        zone_type = "residential"
+    else:
+        zone_meta = nearest_zone(normalized["lat"], normalized["lng"])
+        zone_type = str(zone_meta.get("zone_type", "residential"))
+
+    return {
+        "zone_Commercial": 1 if zone_type == "commercial" else 0,
+        "zone_Industrial": 1 if zone_type == "industrial" else 0,
+        "zone_Residential": 1 if zone_type == "residential" else 0,
+    }
+
+
+def _station_capacity(zone_flags: Dict[str, int], station_name: str) -> float:
+    name = station_name.lower()
+    if zone_flags["zone_Industrial"]:
+        base = 260.0
+    elif zone_flags["zone_Commercial"]:
+        base = 200.0
+    else:
+        base = 140.0
+
+    if "airport" in name or "fleet" in name:
+        base += 60.0
+    elif "mall" in name or "tech park" in name:
+        base += 40.0
+
+    return base
+
+
+def _peak_curve(hour: int, peak_hours: List[float], width: float = 2.2) -> float:
+    score = 0.0
+    for peak in peak_hours:
+        distance = min(abs(hour - peak), 24 - abs(hour - peak))
+        score += math.exp(-((distance ** 2) / (2 * (width ** 2))))
+    return score
+
+
+def register_osm_stations(stations: List[Dict]) -> List[Dict]:
+    normalized = []
+    for station in stations:
+        canonical = _canonical_station(station)
+        zone_flags = assign_station_zone(canonical)
+        zone_meta = nearest_zone(canonical["lat"], canonical["lng"])
+        canonical.update(
+            {
+                **zone_flags,
+                "zone_type": (
+                    "commercial" if zone_flags["zone_Commercial"]
+                    else "industrial" if zone_flags["zone_Industrial"]
+                    else "residential"
+                ),
+                "zone_name": str(zone_meta["name"]),
+                "zone_id": int(zone_meta["id"]),
+                "capacity": round(_station_capacity(zone_flags, canonical["name"]), 1),
+            }
+        )
+        STATION_REGISTRY[canonical["id"]] = canonical
+        normalized.append(canonical)
+    return normalized
+
+
+def get_registered_stations() -> List[Dict]:
+    return list(STATION_REGISTRY.values())
+
+
+def generate_current_state(station: Dict, timestamp: Optional[datetime] = None) -> Dict:
+    ts = timestamp or datetime.now()
+    canonical = STATION_REGISTRY.get(int(station["id"])) or register_osm_stations([station])[0]
+    cache_key = f"{canonical['id']}:{ts.strftime('%Y%m%d%H')}"
+    cached = STATION_STATE_CACHE.get(cache_key)
+    if cached:
+        return dict(cached)
+
+    zone_flags = {
+        "zone_Commercial": canonical["zone_Commercial"],
+        "zone_Industrial": canonical["zone_Industrial"],
+        "zone_Residential": canonical["zone_Residential"],
+    }
+    capacity = float(canonical["capacity"])
+    weekday = ts.weekday() < 5
+    is_weekend = 0 if weekday else 1
+    hour = ts.hour
+    seed = _station_rng_seed(canonical["id"], ts)
+    rng = random.Random(seed)
+
+    if zone_flags["zone_Commercial"]:
+        peak_strength = _peak_curve(hour, [9.0, 18.0], width=2.0)
+        base_ev = 4.0 if weekday else 3.0
+        peak_ev = (10.0 if weekday else 7.0) * peak_strength
+    elif zone_flags["zone_Industrial"]:
+        peak_strength = _peak_curve(hour, [8.0, 17.0], width=2.3)
+        base_ev = 5.0 if weekday else 2.5
+        peak_ev = (9.0 if weekday else 4.5) * peak_strength
+    else:
+        peak_strength = _peak_curve(hour, [21.0, 1.0, 5.0], width=2.5)
+        base_ev = 3.0 if weekday else 4.5
+        peak_ev = (8.0 if weekday else 9.0) * peak_strength
+
+    if zone_flags["zone_Commercial"] and not weekday:
+        peak_ev *= 0.85
+    if zone_flags["zone_Residential"] and not weekday:
+        peak_ev *= 1.12
+
+    ev_count = max(1, int(round(base_ev + peak_ev + rng.uniform(0.0, 2.4))))
+    connector_mix_kw = 12.0 if zone_flags["zone_Residential"] else 18.0 if zone_flags["zone_Commercial"] else 24.0
+    load_noise = rng.uniform(0.94, 1.08)
+    raw_load = ev_count * connector_mix_kw * load_noise
+    load = round(min(capacity * 0.98, max(capacity * 0.08, raw_load)), 2)
+
+    history_peak = 0.78 if zone_flags["zone_Residential"] else 0.72 if zone_flags["zone_Commercial"] else 0.76
+    history_curve = _peak_curve((hour - 1) % 24, [20.0, 8.0] if zone_flags["zone_Residential"] else [9.0, 18.0], width=2.7)
+    past_demand = round(min(capacity, max(capacity * 0.06, load * (0.84 + history_curve * 0.12) * history_peak)), 2)
+
+    utilization_percent = round((load / max(capacity, 1.0)) * 100, 1)
+    if utilization_percent >= 86:
+        status = "RED"
+    elif utilization_percent >= 62:
+        status = "YELLOW"
+    else:
+        status = "GREEN"
+
+    wait_multiplier = 0.0 if utilization_percent < 55 else (utilization_percent - 55) / 4.5
+    wait_time = round(max(0.0, wait_multiplier * (1.5 if zone_flags["zone_Commercial"] else 1.2)), 1)
+
+    state = {
+        **canonical,
+        "hour": hour,
+        "day_of_week": ts.weekday(),
+        "is_weekend": is_weekend,
+        "ev_count": ev_count,
+        "past_demand": past_demand,
+        "load": load,
+        "current_load": load,
+        "wait_time": wait_time,
+        "utilization_percent": utilization_percent,
+        "status": status,
+        "timestamp": ts.isoformat(),
+    }
+    STATION_STATE_CACHE[cache_key] = state
+    return dict(state)
+
+
+def generate_states_for_stations(stations: List[Dict], timestamp: Optional[datetime] = None) -> List[Dict]:
+    register_osm_stations(stations)
+    return [generate_current_state(station, timestamp) for station in stations]
+
+
+def get_station_state(station_id: int, timestamp: Optional[datetime] = None) -> Optional[Dict]:
+    station = STATION_REGISTRY.get(int(station_id))
+    if not station:
+        return None
+    return generate_current_state(station, timestamp)
 
 
 class SimulationEngine:
