@@ -353,7 +353,7 @@ export default function OperatorDashboard() {
     doc.text(`Scenario: ${data.scenario}`, 14, 38);
     doc.text(`Predicted load: ${Math.round(data.grid_stress.predicted_load)} kW`, 14, 46);
     doc.text(`Capacity: ${Math.round(data.grid_stress.capacity)} kW`, 14, 54);
-    doc.text(`Peak window: ${data.network_summary.peak_window}`, 14, 62);
+    doc.text(`Peak window: ${data.network_summary?.peak_window || 'N/A'}`, 14, 62);
     doc.text(`Reason: ${data.grid_stress.explanation.reason}`, 14, 72, { maxWidth: 180 });
     doc.text(`Impact: ${data.grid_stress.explanation.impact}`, 14, 90, { maxWidth: 180 });
     doc.save('gridsense-forecast-summary.pdf');
@@ -707,7 +707,7 @@ export default function OperatorDashboard() {
                 </div>
                 <div className="rounded-2xl border border-white/8 bg-[#0E141C] p-4">
                   <p className="text-sm text-slate-400">Peak Window</p>
-                  <p className="mt-1 text-lg font-semibold text-white">{data.network_summary.peak_window}</p>
+                  <p className="mt-1 text-lg font-semibold text-white">{data.network_summary?.peak_window || 'N/A'}</p>
                 </div>
               </div>
                <div className="rounded-2xl border border-white/8 bg-[#0E141C] p-4 text-sm text-slate-300">
@@ -864,7 +864,7 @@ export default function OperatorDashboard() {
           {[
             { label: 'Peak Delta', value: `${peakDelta >= 0 ? '+' : ''}${peakDelta} kW`, icon: Gauge, tone: peakDelta > 0 ? 'text-rose-300' : 'text-emerald-300' },
             { label: 'Peak Hour', value: data.forecast.peak.label, icon: TrendingUp, tone: 'text-cyan-300' },
-            { label: 'Zones At Risk', value: `${data.network_summary.zones_at_risk}`, icon: AlertTriangle, tone: data.network_summary.zones_at_risk > 0 ? 'text-rose-300' : 'text-emerald-300' },
+            { label: 'Zones At Risk', value: `${data.network_summary?.zones_at_risk || 0}`, icon: AlertTriangle, tone: (data.network_summary?.zones_at_risk || 0) > 0 ? 'text-rose-300' : 'text-emerald-300' },
             { label: 'Model', value: data.forecast.model, icon: ShieldCheck, tone: 'text-emerald-300' },
           ].map((card) => (
             <div key={card.label} className="rounded-[24px] border border-white/10 bg-white/5 p-5 backdrop-blur-xl">
@@ -1044,10 +1044,10 @@ export default function OperatorDashboard() {
                 </div>
                 <div className="mt-4 grid gap-4 sm:grid-cols-4">
                   {[
-                    { label: 'Constrained Zones', value: `${data.network_summary.constrained_zones}` },
-                    { label: 'Peak Window', value: data.network_summary.peak_window },
-                    { label: 'Best Headroom', value: data.network_summary.highest_headroom_zone },
-                    { label: 'Scenario Delta', value: `${data.network_summary.scenario_delta_kw >= 0 ? '+' : ''}${data.network_summary.scenario_delta_kw} kW` },
+                    { label: 'Constrained Zones', value: `${data.network_summary?.constrained_zones || 0}` },
+                    { label: 'Peak Window', value: data.network_summary?.peak_window || 'N/A' },
+                    { label: 'Best Headroom', value: data.network_summary?.highest_headroom_zone || 'N/A' },
+                    { label: 'Scenario Delta', value: `${(data.network_summary?.scenario_delta_kw ?? 0) >= 0 ? '+' : ''}${(data.network_summary?.scenario_delta_kw ?? 0)} kW` },
                   ].map((item) => (
                     <div key={item.label} className="rounded-2xl border border-white/8 bg-[#0D131A] p-4">
                       <p className="text-xs uppercase tracking-[0.18em] text-slate-500">{item.label}</p>
@@ -1204,7 +1204,7 @@ export default function OperatorDashboard() {
                   <div className="rounded-2xl border border-white/8 bg-[#0D131A] p-4">
                     <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Active Zones</p>
                     <p className="mt-3 text-2xl font-semibold text-white">{data.all_zones?.length ?? 0}</p>
-                    <p className="mt-2 text-xs text-slate-400">{data.network_summary.constrained_zones} constrained</p>
+                    <p className="mt-2 text-xs text-slate-400">{data.network_summary?.constrained_zones || 0} constrained</p>
                   </div>
                   <div className="rounded-2xl border border-white/8 bg-[#0D131A] p-4">
                     <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Network Load</p>
