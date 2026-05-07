@@ -71,6 +71,7 @@ async def create_session(request: SessionExchangeRequest):
     access_token = create_session_token(
         {
             "sub": request.email,
+            "email": request.email,
             "uid": request.uid,
             "role": request.role,
             "name": request.name,

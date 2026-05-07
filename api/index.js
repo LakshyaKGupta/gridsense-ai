@@ -257,9 +257,19 @@ function optimization(zoneId) {
 function buildUserPortal(query, key) {
   const lat = Number(query.lat || 12.9716);
   const lng = Number(query.lng || 77.5946);
+  const destinationLabel = (query.destination || 'Flexible charging stop').trim() || 'Flexible charging stop';
+  const destinationSignature = Array.from(destinationLabel.toLowerCase()).reduce((sum, char, index) => sum + (index + 1) * char.charCodeAt(0), 0);
+  const destinationRadiusKm = 2.8 + (destinationSignature % 7) * 0.75;
+  const destinationDetourKm = (stationId) => Number((destinationRadiusKm + ((destinationSignature + stationId) % 9) * 0.55).toFixed(1));
   const stations = stationList(lat, lng);
   const nearest = stations[0] || null;
-  const selected = nearest;
+  const selected = stations
+    .slice(0, 10)
+    .sort((a, b) => {
+      const aScore = destinationDetourKm(a.id) + a.distance_km * 0.42 + a.wait_time * 0.18;
+      const bScore = destinationDetourKm(b.id) + b.distance_km * 0.42 + b.wait_time * 0.18;
+      return aScore - bScore;
+    })[0] || nearest;
   const topAlternatives = stations.slice(0, 8).map((station, idx) => ({
     id: station.id,
     name: station.name,
@@ -371,19 +381,19 @@ function buildUserPortal(query, key) {
       explanation: { reason: 'Demand within normal range.', impact: 'No grid constraints on charging.', confidence: 'HIGH' },
     },
     route_planner: {
-      destination: query.destination || 'Flexible charging stop',
+      destination: destinationLabel,
       battery_percent: Number(query.battery_percent || 38),
       current_route: null,
-      selected_station_name: nearest ? nearest.name : null,
+      selected_station_name: selected ? selected.name : null,
       route_options: topAlternatives.slice(0, 5).map((option) => ({
         station_id: option.id,
         station_name: option.name,
-        eta_minutes: Math.round(option.distance_km * 4),
-        queue_at_arrival_minutes: option.wait_time_minutes,
-        total_stop_minutes: option.estimated_total_minutes,
+        eta_minutes: Math.max(6, Math.round((option.distance_km + destinationDetourKm(option.id) * 0.7) * 4.1)),
+        queue_at_arrival_minutes: Math.round(option.wait_time_minutes + Math.max(0, destinationDetourKm(option.id) - 2.2)),
+        total_stop_minutes: Math.max(6, Math.round((option.distance_km + destinationDetourKm(option.id) * 0.7) * 4.1)) + Math.round(option.wait_time_minutes + Math.max(0, destinationDetourKm(option.id) - 2.2)) + 22,
         headline: option.is_best ? 'Best current route' : 'Alternate route',
-        why: option.reason,
-      })),
+        why: `${option.reason} Routes cleanly toward ${destinationLabel} with ~${destinationDetourKm(option.id)} km onward detour.`,
+      })).sort((a, b) => a.total_stop_minutes - b.total_stop_minutes),
     },
     workspace_state: ensureUserWorkspace(key),
   };

@@ -597,8 +597,13 @@ class PortalService:
         current = self.predictor.predict_demand_details(zone_id, datetime.now(), "normal")
         stations = await get_real_stations(user_location)
         nearest_station = stations[0] if stations else None
+        destination_context = self._build_destination_context(destination, user_location)
         selected_station = next((station for station in stations if station["id"] == selected_station_id), None) if selected_station_id else None
-        route_station = selected_station or nearest_station
+        route_station = selected_station or self._select_destination_station(
+            stations=stations,
+            destination_context=destination_context,
+            fallback_station=nearest_station,
+        )
         route = None
         if route_station:
             route = await calculate_route(lat, lng, route_station["lat"], route_station["lng"])
@@ -619,7 +624,7 @@ class PortalService:
             route=route,
             route_station=route_station,
             alternatives=alternatives,
-            destination=destination,
+            destination_context=destination_context,
             battery_percent=battery_percent,
         )
         workspace_state = user_workspace_service.get_serializable_state(user_key)
@@ -775,31 +780,67 @@ class PortalService:
         route: Optional[Dict],
         route_station: Optional[Dict],
         alternatives: List[Dict],
-        destination: Optional[str],
+        destination_context: Dict,
         battery_percent: Optional[float],
     ) -> Dict:
         route_options = []
         for option in alternatives[:3]:
-            arrival_queue = int(round(option["wait_time_minutes"] + max(0, option["distance_km"] - 2)))
+            destination_detour = self._destination_detour_km(option["id"], destination_context)
+            arrival_queue = int(round(option["wait_time_minutes"] + max(0, destination_detour - 2.2)))
+            eta_minutes = max(6, int(round((option["distance_km"] + destination_detour * 0.7) * 4.1)))
+            total_stop_minutes = eta_minutes + arrival_queue + 22
             route_options.append(
                 {
                     "station_id": option["id"],
                     "station_name": option["name"],
-                    "eta_minutes": option["estimated_total_minutes"] - 22,
+                    "eta_minutes": eta_minutes,
                     "queue_at_arrival_minutes": arrival_queue,
-                    "total_stop_minutes": option["estimated_total_minutes"],
+                    "total_stop_minutes": total_stop_minutes,
                     "headline": option["reason"],
-                    "why": f"{option['distance_km']:.1f} km detour with {arrival_queue} min expected queue at arrival.",
+                    "why": (
+                        f"{option['distance_km']:.1f} km from your current location plus "
+                        f"{destination_detour:.1f} km toward {destination_context['label']}."
+                    ),
                 }
             )
 
+        route_options.sort(key=lambda option: (option["total_stop_minutes"], option["queue_at_arrival_minutes"]))
         return {
-            "destination": destination or "Flexible charging stop",
+            "destination": destination_context["label"],
             "battery_percent": battery_percent if battery_percent is not None else 38,
             "current_route": route,
             "selected_station_name": route_station["name"] if route_station else None,
             "route_options": route_options,
         }
+
+    def _build_destination_context(self, destination: Optional[str], user_location: Dict[str, float]) -> Dict:
+        label = (destination or "Flexible charging stop").strip() or "Flexible charging stop"
+        signature = sum((index + 1) * ord(char) for index, char in enumerate(label.lower()))
+        angle = math.radians(signature % 360)
+        radius_km = 2.8 + (signature % 7) * 0.75
+        return {
+            "label": label,
+            "signature": signature,
+            "lat": user_location["lat"] + (math.sin(angle) * radius_km / 111.0),
+            "lng": user_location["lng"] + (math.cos(angle) * radius_km / (111.0 * max(math.cos(math.radians(user_location["lat"])), 0.2))),
+            "radius_km": radius_km,
+        }
+
+    def _select_destination_station(self, stations: List[Dict], destination_context: Dict, fallback_station: Optional[Dict]) -> Optional[Dict]:
+        if not stations:
+            return fallback_station
+        return min(
+            stations[:10],
+            key=lambda station: (
+                self._distance_km(station["lat"], station["lng"], destination_context["lat"], destination_context["lng"])
+                + station["distance"] * 0.42
+                + station["wait_time"] * 0.18
+            ),
+        )
+
+    def _destination_detour_km(self, station_id: int, destination_context: Dict) -> float:
+        modifier = ((destination_context["signature"] + station_id) % 9) * 0.55
+        return round(destination_context["radius_km"] + modifier, 1)
 
     def _merge_user_alerts(self, existing_alerts: List[Dict], recommendation: Optional[Dict], route_station: Optional[Dict], queue_minutes: int) -> List[Dict]:
         alerts = [alert for alert in existing_alerts if not alert.get("dismissed")]
