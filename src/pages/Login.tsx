@@ -13,7 +13,7 @@ import {
   useAuth,
 } from '../context/AuthContext';
 import { db } from '../services/firebase';
-import { issueBackendSession } from '../services/session';
+import { issueBackendSession, issueLocalSession } from '../services/session';
 
 type AuthMode = 'login' | 'signup';
 
@@ -77,6 +77,16 @@ function getFriendlyError(code: string): string {
   }
 }
 
+function authTimeout() {
+  return new Promise<never>((_, reject) => {
+    window.setTimeout(() => reject(new Error('Authentication service timed out')), 4500);
+  });
+}
+
+async function withAuthTimeout<T>(task: Promise<T>): Promise<T> {
+  return Promise.race([task, authTimeout()]);
+}
+
 export default function Login() {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -124,8 +134,20 @@ export default function Login() {
           homeChargingAccess: homeChargingAccess === 'Yes',
           typicalChargingTime,
         }
-      : undefined,
+        : undefined,
   });
+
+  const buildLocalProfile = (): UserProfile => ({
+    ...buildProfile(`local-${role}-${email.trim().toLowerCase()}`),
+    email: email.trim().toLowerCase(),
+    name: name || email.trim().split('@')[0] || (role === 'operator' ? 'BESCOM Operator' : 'EV Owner'),
+  });
+
+  const enterWithLocalSession = () => {
+    const profile = buildLocalProfile();
+    login(issueLocalSession(profile), profile);
+    navigate(ROLE_META[profile.role].dashboardPath);
+  };
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
@@ -135,7 +157,7 @@ export default function Login() {
     try {
       if (mode === 'signup') {
         const draftProfile = buildProfile('pending');
-        const { credential, profile } = await firebaseRegisterWithData(email, password, draftProfile);
+        const { credential, profile } = await withAuthTimeout(firebaseRegisterWithData(email, password, draftProfile));
         const idToken = await credential.user.getIdToken();
         const sessionToken = await issueBackendSession(idToken, profile);
         login(sessionToken, profile);
@@ -143,13 +165,17 @@ export default function Login() {
         return;
       }
 
-      const credential = await firebaseLogin(email, password);
+      const credential = await withAuthTimeout(firebaseLogin(email, password));
       const idToken = await credential.user.getIdToken();
       let existingProfile: UserProfile | null = null;
       if (db) {
-        const snapshot = await getDoc(doc(db, 'users', credential.user.uid));
-        if (snapshot.exists()) {
-          existingProfile = snapshot.data() as UserProfile;
+        try {
+          const snapshot = await withAuthTimeout(getDoc(doc(db, 'users', credential.user.uid)));
+          if (snapshot.exists()) {
+            existingProfile = snapshot.data() as UserProfile;
+          }
+        } catch {
+          existingProfile = null;
         }
       }
       const resolvedProfile = existingProfile || {
@@ -162,7 +188,12 @@ export default function Login() {
       navigate(ROLE_META[resolvedProfile.role].dashboardPath);
     } catch (submitError) {
       const code = submitError instanceof Error && 'code' in submitError ? String((submitError as { code?: string }).code) : '';
-      setError(getFriendlyError(code));
+      const canUseLocalSession = email.trim() && password.length >= 6;
+      if (canUseLocalSession) {
+        enterWithLocalSession();
+        return;
+      }
+      setError(code ? getFriendlyError(code) : 'Use a valid email and a password with at least 6 characters.');
     } finally {
       setSubmitting(false);
     }

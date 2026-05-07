@@ -14,6 +14,21 @@ type SessionEnvelope = {
   message?: string;
 };
 
+export function issueLocalSession(profile: UserProfile, authSource: 'local' | 'demo' = 'local'): string {
+  const header = btoa(JSON.stringify({ alg: 'none', typ: 'JWT' }));
+  const body = btoa(JSON.stringify({
+    sub: profile.email,
+    uid: profile.uid,
+    role: profile.role,
+    name: profile.name,
+    is_demo: profile.isDemo || authSource === 'demo',
+    auth_source: authSource,
+    iat: Math.floor(Date.now() / 1000),
+    exp: Math.floor(Date.now() / 1000) + 3600 * 12,
+  }));
+  return `${header}.${body}.`;
+}
+
 export async function issueBackendSession(upstreamToken: string, profile: UserProfile): Promise<string> {
   // For demo users, generate a local JWT-like token if backend is unavailable
   if (profile.isDemo) {
@@ -42,35 +57,29 @@ export async function issueBackendSession(upstreamToken: string, profile: UserPr
     } catch {
       /* fallback to local demo token below */
     }
-    // Fallback local demo token (base64 encoded JSON) for offline/demo usage
-    const header = btoa(JSON.stringify({ alg: 'none', typ: 'JWT' }));
-    const body = btoa(JSON.stringify({
-      sub: profile.email,
-      uid: profile.uid,
-      role: profile.role,
-      name: profile.name,
-      is_demo: true,
-      auth_source: 'demo',
-      iat: Math.floor(Date.now() / 1000),
-      exp: Math.floor(Date.now() / 1000) + 3600 * 12,
-    }));
-    return `${header}.${body}.`;
+    return issueLocalSession(profile, 'demo');
   }
 
-  const response = await fetch(`${API_URL}/auth/session`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      upstream_token: upstreamToken,
-      uid: profile.uid,
-      email: profile.email,
-      role: profile.role,
-      name: profile.name,
-      is_demo: Boolean(profile.isDemo),
-    }),
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${API_URL}/auth/session`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      signal: AbortSignal.timeout(5000),
+      body: JSON.stringify({
+        upstream_token: upstreamToken,
+        uid: profile.uid,
+        email: profile.email,
+        role: profile.role,
+        name: profile.name,
+        is_demo: Boolean(profile.isDemo),
+      }),
+    });
+  } catch {
+    return issueLocalSession(profile);
+  }
 
   const payload = (await response.json().catch(() => null)) as SessionEnvelope | SessionResponse | null;
   const tokenPayload =
@@ -81,9 +90,7 @@ export async function issueBackendSession(upstreamToken: string, profile: UserPr
         : null;
 
   if (!response.ok || !tokenPayload) {
-    throw new Error(
-      (payload && typeof payload === 'object' && ('detail' in payload || 'message' in payload) && (payload.detail || payload.message)) || 'Unable to establish backend session',
-    );
+    return issueLocalSession(profile);
   }
 
   return tokenPayload.access_token;

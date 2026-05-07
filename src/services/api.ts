@@ -852,7 +852,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     isBackendLive = true;
     return raw as T;
   } catch (error) {
-    if (path.startsWith('/portal/') || path.startsWith('/ai/copilot')) {
+    if (path.startsWith('/ai/copilot')) {
       throw error;
     }
     const fallback = getFallbackResponse<T>(path);
