@@ -337,7 +337,7 @@ export default function UserDashboard() {
             </div>
 
             {shouldShowMap ? (
-            <div className="relative h-[560px] lg:h-[620px]">
+            <div className="relative h-[440px] lg:h-[500px] xl:h-[540px]">
               <Map
                 ref={mapRef}
                 {...viewState}
@@ -473,7 +473,7 @@ export default function UserDashboard() {
               )}
             </div>
             ) : (
-              <div className="grid min-h-[560px] content-start gap-4 p-5">
+              <div className="grid min-h-[460px] content-start gap-4 p-5">
                 {workspace === 'history' && (
                   <>
                     <div className="grid gap-3 sm:grid-cols-3">

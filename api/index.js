@@ -15,6 +15,30 @@ const zones = [
   { id: 12, name: 'Airport Corridor', lat: 13.1986, lng: 77.7066, capacity: 950, current_demand: 520, status: 'YELLOW' },
 ];
 
+const DEFAULT_ACTION_TEMPLATES = [
+  {
+    priority: 'HIGH',
+    risk_color: 'orange',
+    title: 'Shift public charging away from 18:00–20:00',
+    reason: 'Evening queue pressure is concentrated in Koramangala and MG Road.',
+    actions: ['Broadcast off-peak pricing', 'Redirect low-SOC drivers to lower-load corridors', 'Track queue growth every 15 min'],
+    impact: 'Reduces visible queue pressure during the highest congestion window.',
+    confidence: 'HIGH',
+  },
+  {
+    priority: 'MEDIUM',
+    risk_color: 'yellow',
+    title: 'Audit charger uptime in the airport corridor',
+    reason: 'Airport-corridor stations are carrying spillover demand and need high availability.',
+    actions: ['Verify connector health', 'Pre-stage maintenance crew', 'Keep one bay reserved for rapid turnover'],
+    impact: 'Protects headroom on long-distance travel corridors.',
+    confidence: 'MEDIUM',
+  },
+];
+
+const userWorkspaceStore = new Map();
+const operatorWorkflowStore = new Map();
+
 const baseStations = [
   { id: 900001, name: 'Ather Charging Grid', lat: 12.9756680, lng: 77.6413089, operator: 'Ather Energy', zone_name: 'Indiranagar' },
   { id: 900002, name: 'Ather Charging Station', lat: 12.9311453, lng: 77.6238461, operator: 'ChargePoint', zone_name: 'Koramangala' },
@@ -82,6 +106,95 @@ function stationList(userLat = 12.9716, userLng = 77.5946) {
     .sort((a, b) => a.distance - b.distance);
 }
 
+function getSessionKey(req) {
+  return req.headers?.authorization || req.headers?.Authorization || 'anonymous';
+}
+
+function ensureUserWorkspace(key) {
+  if (!userWorkspaceStore.has(key)) {
+    userWorkspaceStore.set(key, {
+      history: [],
+      saved: { stations: [], routes: [], windows: [] },
+      alerts: [],
+      wallet: { balance_inr: 1800, monthly_savings_inr: 0, transactions: [] },
+      settings: {
+        notification_enabled: true,
+        queue_alerts: true,
+        price_alerts: true,
+        preferred_speed: 'fast',
+        privacy_mode: false,
+      },
+    });
+  }
+  return userWorkspaceStore.get(key);
+}
+
+function ensureWorkflowState(key) {
+  if (!operatorWorkflowStore.has(key)) {
+    operatorWorkflowStore.set(key, {
+      statuses: {},
+      active_actions: [],
+      recent_events: [],
+    });
+  }
+  return operatorWorkflowStore.get(key);
+}
+
+function buildActionQueue(key) {
+  const workflow = ensureWorkflowState(key);
+  return DEFAULT_ACTION_TEMPLATES.map((item, index) => {
+    const saved = workflow.statuses[item.title] || {};
+    return {
+      ...item,
+      status: saved.status || 'pending',
+      workflow_status: saved.workflow_status || 'pending',
+      workflow_id: saved.workflow_id || `wf-${index + 1}`,
+      acknowledged_by: saved.acknowledged_by || null,
+      acknowledged_at: saved.acknowledged_at || null,
+    };
+  });
+}
+
+function syncWorkflowActions(key) {
+  const workflow = ensureWorkflowState(key);
+  const actions = buildActionQueue(key).map((item) => ({
+    id: item.workflow_id,
+    title: item.title,
+    status: item.workflow_status || 'pending',
+    priority: item.priority,
+    acknowledged_by: item.acknowledged_by || undefined,
+    acknowledged_at: item.acknowledged_at || undefined,
+    created_at: item.acknowledged_at || now(),
+    updated_at: now(),
+    history: workflow.recent_events.filter((event) => event.action_title === item.title),
+  }));
+  workflow.active_actions = actions;
+  return workflow;
+}
+
+function pushHistory(workspace, entry) {
+  workspace.history.unshift({ id: `hist-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, created_at: now(), ...entry });
+  workspace.history = workspace.history.slice(0, 20);
+}
+
+function parseMaybeBoolean(value) {
+  if (value === true || value === 'true') return true;
+  if (value === false || value === 'false') return false;
+  return undefined;
+}
+
+async function readBody(req) {
+  if (req.body && typeof req.body === 'object') return req.body;
+  if (typeof req.body === 'string' && req.body.trim()) {
+    try {
+      return JSON.parse(req.body);
+    } catch {
+      return {};
+    }
+  }
+  return {};
+}
+
 function state() {
   const stations = stationList();
   return {
@@ -141,7 +254,7 @@ function optimization(zoneId) {
   };
 }
 
-function buildUserPortal(query) {
+function buildUserPortal(query, key) {
   const lat = Number(query.lat || 12.9716);
   const lng = Number(query.lng || 77.5946);
   const stations = stationList(lat, lng);
@@ -272,23 +385,11 @@ function buildUserPortal(query) {
         why: option.reason,
       })),
     },
-    workspace_state: {
-      history: [],
-      saved: { stations: [], routes: [], windows: [] },
-      alerts: [],
-      wallet: { balance_inr: 1800, monthly_savings_inr: 0, transactions: [] },
-      settings: {
-        notification_enabled: true,
-        queue_alerts: true,
-        price_alerts: true,
-        preferred_speed: 'fast',
-        privacy_mode: false,
-      },
-    },
+    workspace_state: ensureUserWorkspace(key),
   };
 }
 
-function buildOperatorPortal(query) {
+function buildOperatorPortal(query, key) {
   const requestedZone = query.zone || 'Whitefield';
   const stations = stationList();
   const selectedZoneStations = stations.filter((station) => station.zone_name === requestedZone);
@@ -303,6 +404,7 @@ function buildOperatorPortal(query) {
     downtime_probability: Number(Math.min(0.42, Math.max(0.04, station.utilization_percent / 180)).toFixed(3)),
   }));
 
+  const workflow = syncWorkflowActions(key);
   return {
     role: 'operator',
     scenario: query.scenario || 'normal',
@@ -339,14 +441,14 @@ function buildOperatorPortal(query) {
     },
     forecast: { zone_id: 3, zone_name: requestedZone, curve: [], peak: { label: '19:00', predicted_demand: 680, confidence_upper: 730 }, model: 'XGBoost' },
     network_summary: { total_zones: zones.length, zones_at_risk: 2, constrained_zones: 3, peak_window: '18:00–20:00', highest_headroom_zone: 'Electronic City', scenario_delta_kw: 0 },
-    action_queue: [],
+    action_queue: buildActionQueue(key),
     zone_rankings: zones.map((zone) => ({ ...zone, predicted_load: zone.current_demand, headroom_kw: zone.capacity - zone.current_demand, utilization_percent: Math.round((zone.current_demand / zone.capacity) * 100), status: zone.current_demand > 650 ? 'OVERLOAD RISK' : zone.current_demand > 500 ? 'CONSTRAINED' : 'STABLE', active: zone.name === requestedZone })),
     planning_insights: [
       { headline: `Track expansion around ${requestedZone}`, reason: 'High station density is now exposed in production.', impact: 'Better map coverage and queue visibility.', confidence: 'HIGH' },
     ],
     all_zones: zones.map((zone) => ({ ...zone, active: zone.name === requestedZone })),
     spatial: { heatmap_points: [], overload_zones: [], congestion_corridors: [] },
-    workflow: { active_actions: [], recent_events: [] },
+    workflow: { active_actions: workflow.active_actions, recent_events: workflow.recent_events },
     incidents: [],
     stations: visibleStations,
     system_health: { backend_latency_ms: 120, api_health: 'healthy', polling_health: 'healthy', forecast_engine_status: 'active', db_connectivity: 'connected', model_drift_percent: 2, memory_usage_mb: 184, uptime_hours: 24, cache_health: 'warm', transport_status: 'polling', heartbeat_at: now(), selected_zone_observed_kw: 612, scenario: query.scenario || 'normal' },
@@ -367,9 +469,11 @@ function send(res, data, status = 200) {
   });
 }
 
-export default function handler(req, res) {
+export default async function handler(req, res) {
   const path = req.url.split('?')[0].replace(/^\/api/, '') || '/';
   const query = parseQuery(req.url);
+  const body = await readBody(req);
+  const sessionKey = getSessionKey(req);
   const zoneMatch = path.match(/\/(?:demand|forecast|optimize|impact)\/(\d+)/);
   const zoneId = zoneMatch ? Number(zoneMatch[1]) : 1;
   const lat = Number(query.lat || 12.9716);
@@ -379,8 +483,137 @@ export default function handler(req, res) {
   if (path === '/' || path === '/health') return send(res, { message: 'GridSense demo API online' });
   if (path === '/ev/state') return send(res, state());
   if (path === '/ev/stations' || path === '/stations/nearby') return send(res, stations);
-  if (path === '/portal/user') return send(res, buildUserPortal(query));
-  if (path === '/portal/operator') return send(res, buildOperatorPortal(query));
+  if (path === '/portal/user') return send(res, buildUserPortal(query, sessionKey));
+  if (path === '/portal/operator') return send(res, buildOperatorPortal(query, sessionKey));
+  if (path === '/portal/workflow/acknowledge' && req.method === 'POST') {
+    const workflow = ensureWorkflowState(sessionKey);
+    const title = body.action_title;
+    const event = {
+      id: `wf-event-${Date.now()}`,
+      action_title: title,
+      event_type: 'acknowledged',
+      operator: 'Operator',
+      timestamp: now(),
+      details: `${title} acknowledged.`,
+      new_status: 'acknowledged',
+    };
+    workflow.statuses[title] = {
+      ...(workflow.statuses[title] || {}),
+      workflow_status: 'acknowledged',
+      status: 'acknowledged',
+      workflow_id: workflow.statuses[title]?.workflow_id || `wf-${Object.keys(workflow.statuses).length + 1}`,
+      acknowledged_by: 'Operator',
+      acknowledged_at: event.timestamp,
+    };
+    workflow.recent_events.unshift(event);
+    workflow.recent_events = workflow.recent_events.slice(0, 20);
+    syncWorkflowActions(sessionKey);
+    return send(res, workflow.active_actions.find((item) => item.title === title) || {});
+  }
+  if (path === '/portal/workflow/update-status' && req.method === 'POST') {
+    const workflow = ensureWorkflowState(sessionKey);
+    const title = body.action_title;
+    const newStatus = body.new_status;
+    const event = {
+      id: `wf-event-${Date.now()}`,
+      action_title: title,
+      event_type: newStatus,
+      operator: 'Operator',
+      timestamp: now(),
+      details: body.notes ? `${title} marked ${newStatus}. ${body.notes}` : `${title} marked ${newStatus}.`,
+      new_status: newStatus,
+    };
+    workflow.statuses[title] = {
+      ...(workflow.statuses[title] || {}),
+      workflow_status: newStatus,
+      status: newStatus,
+      workflow_id: workflow.statuses[title]?.workflow_id || `wf-${Object.keys(workflow.statuses).length + 1}`,
+      acknowledged_by: workflow.statuses[title]?.acknowledged_by || 'Operator',
+      acknowledged_at: workflow.statuses[title]?.acknowledged_at || event.timestamp,
+    };
+    workflow.recent_events.unshift(event);
+    workflow.recent_events = workflow.recent_events.slice(0, 20);
+    syncWorkflowActions(sessionKey);
+    return send(res, workflow.active_actions.find((item) => item.title === title) || {});
+  }
+  if (path === '/portal/workflow/timeline') {
+    const workflow = syncWorkflowActions(sessionKey);
+    return send(res, { events: workflow.recent_events });
+  }
+  if (path === '/portal/user/save-station' && req.method === 'POST') {
+    const workspace = ensureUserWorkspace(sessionKey);
+    const station = stations.find((item) => item.id === body.station_id);
+    if (station) {
+      workspace.saved.stations = [station, ...workspace.saved.stations.filter((item) => item.id !== station.id)].slice(0, 24);
+      pushHistory(workspace, { type: 'station_saved', station_name: station.name, station_id: station.id });
+    }
+    return send(res, workspace);
+  }
+  if (path === '/portal/user/unsave-station' && req.method === 'POST') {
+    const workspace = ensureUserWorkspace(sessionKey);
+    workspace.saved.stations = workspace.saved.stations.filter((item) => item.id !== body.station_id);
+    pushHistory(workspace, { type: 'station_removed', station_id: body.station_id });
+    return send(res, workspace);
+  }
+  if (path === '/portal/user/save-route' && req.method === 'POST') {
+    const workspace = ensureUserWorkspace(sessionKey);
+    workspace.saved.routes = [{ id: `route-${Date.now()}`, created_at: now(), ...body }, ...workspace.saved.routes].slice(0, 24);
+    pushHistory(workspace, { type: 'route_saved', station_name: body.station_name, distance_km: body.distance_km });
+    return send(res, workspace);
+  }
+  if (path === '/portal/user/save-window' && req.method === 'POST') {
+    const workspace = ensureUserWorkspace(sessionKey);
+    workspace.saved.windows = [{ id: `window-${Date.now()}`, created_at: now(), ...body }, ...workspace.saved.windows.filter((item) => item.time_label !== body.time_label)].slice(0, 24);
+    pushHistory(workspace, { type: 'window_saved', time_label: body.time_label, predicted_demand: body.predicted_demand });
+    return send(res, workspace);
+  }
+  if (path === '/portal/user/remove-window' && req.method === 'POST') {
+    const workspace = ensureUserWorkspace(sessionKey);
+    workspace.saved.windows = workspace.saved.windows.filter((item) => item.time_label !== body.time_label);
+    pushHistory(workspace, { type: 'window_removed', time_label: body.time_label });
+    return send(res, workspace);
+  }
+  if (path === '/portal/user/schedule' && req.method === 'POST') {
+    const workspace = ensureUserWorkspace(sessionKey);
+    pushHistory(workspace, { type: 'schedule_created', station_name: body.station_name, time_label: body.time_label });
+    workspace.alerts.unshift({
+      id: `alert-${Date.now()}`,
+      title: 'Charging schedule saved',
+      message: `${body.station_name} scheduled for ${body.time_label}.`,
+      severity: 'info',
+      read: false,
+      dismissed: false,
+      created_at: now(),
+    });
+    workspace.alerts = workspace.alerts.slice(0, 20);
+    return send(res, workspace);
+  }
+  if (path === '/portal/user/record-navigation' && req.method === 'POST') {
+    const workspace = ensureUserWorkspace(sessionKey);
+    pushHistory(workspace, { type: 'navigation_started', station_name: body.station_name, distance_km: body.distance_km });
+    return send(res, workspace);
+  }
+  if (path === '/portal/user/alert' && req.method === 'POST') {
+    const workspace = ensureUserWorkspace(sessionKey);
+    workspace.alerts = workspace.alerts.map((alert) => alert.id === body.alert_id ? { ...alert, ...(body.read !== undefined ? { read: body.read } : {}), ...(body.dismissed !== undefined ? { dismissed: body.dismissed } : {}) } : alert);
+    return send(res, workspace);
+  }
+  if (path === '/portal/user/wallet/recharge' && req.method === 'POST') {
+    const workspace = ensureUserWorkspace(sessionKey);
+    const amount = Number(body.amount_inr || 0);
+    workspace.wallet.balance_inr += amount;
+    workspace.wallet.transactions.unshift({ id: `txn-${Date.now()}`, type: 'Recharge', amount_inr: amount, created_at: now() });
+    workspace.wallet.transactions = workspace.wallet.transactions.slice(0, 20);
+    return send(res, workspace);
+  }
+  if (path === '/portal/user/settings' && req.method === 'POST') {
+    const workspace = ensureUserWorkspace(sessionKey);
+    workspace.settings = {
+      ...workspace.settings,
+      ...Object.fromEntries(Object.entries(body).map(([k, v]) => [k, typeof v === 'string' && (v === 'true' || v === 'false') ? parseMaybeBoolean(v) : v])),
+    };
+    return send(res, workspace);
+  }
   if (path === '/dashboard/summary') return send(res, state());
   if (path === '/alerts' || path === '/alerts/') return send(res, state().alerts);
   if (path === '/realtime/demand') {
