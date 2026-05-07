@@ -1,13 +1,5 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import {
-  User as FirebaseUser,
-  createUserWithEmailAndPassword,
-  onAuthStateChanged,
-  signInWithEmailAndPassword,
-  signOut,
-} from 'firebase/auth';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
-import { auth, db } from '../services/firebase';
+import type { User as FirebaseUser } from 'firebase/auth';
 import { issueBackendSession } from '../services/session';
 
 export type UserRole = 'operator' | 'user';
@@ -80,6 +72,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
+    let unsubscribe: (() => void) | undefined;
+    let cancelled = false;
+
     const persisted = readPersistedSession();
     if (persisted) {
       setToken(persisted.token);
@@ -88,71 +83,88 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setProfile(persisted.profile);
     }
 
-    if (!auth) {
-      setIsLoading(false);
-      return;
-    }
+    void Promise.all([
+      import('../services/firebase'),
+      import('firebase/auth'),
+      import('firebase/firestore'),
+    ]).then(([{ auth, db }, { onAuthStateChanged }, { doc, getDoc }]) => {
+      if (cancelled) return;
 
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      if (!user) {
-        setFirebaseUser(null);
-        // Only clear state if there's no persisted session
-        if (!readPersistedSession()) {
-          setToken(null);
-          setEmail(null);
-          setRole(null);
-          setProfile(null);
-        }
+      if (!auth) {
         setIsLoading(false);
         return;
       }
 
-      try {
-        const idToken = await user.getIdToken();
-        let resolvedProfile: UserProfile | null = null;
+      unsubscribe = onAuthStateChanged(auth, async (user) => {
+        if (cancelled) return;
 
-        if (db) {
-          try {
-            const snapshot = await getDoc(doc(db, 'users', user.uid));
-            if (snapshot.exists()) {
-              resolvedProfile = snapshot.data() as UserProfile;
-            }
-          } catch (error) {
-            console.error('Error fetching Firestore user profile', error);
+        if (!user) {
+          setFirebaseUser(null);
+          // Only clear state if there's no persisted session
+          if (!readPersistedSession()) {
+            setToken(null);
+            setEmail(null);
+            setRole(null);
+            setProfile(null);
           }
+          setIsLoading(false);
+          return;
         }
 
-        if (!resolvedProfile) {
-          resolvedProfile = {
-            uid: user.uid,
-            role: (readPersistedSession()?.profile.role || 'user') as UserRole,
-            name: user.displayName || user.email?.split('@')[0] || 'GridSense User',
-            email: user.email || '',
-            createdAt: new Date().toISOString(),
-          };
+        try {
+          const idToken = await user.getIdToken();
+          let resolvedProfile: UserProfile | null = null;
+
+          if (db) {
+            try {
+              const snapshot = await getDoc(doc(db, 'users', user.uid));
+              if (snapshot.exists()) {
+                resolvedProfile = snapshot.data() as UserProfile;
+              }
+            } catch (error) {
+              console.error('Error fetching Firestore user profile', error);
+            }
+          }
+
+          if (!resolvedProfile) {
+            resolvedProfile = {
+              uid: user.uid,
+              role: (readPersistedSession()?.profile.role || 'user') as UserRole,
+              name: user.displayName || user.email?.split('@')[0] || 'GridSense User',
+              email: user.email || '',
+              createdAt: new Date().toISOString(),
+            };
+          }
+
+          const sessionToken = await issueBackendSession(idToken, resolvedProfile);
+
+          if (cancelled) return;
+          setFirebaseUser(user);
+          setToken(sessionToken);
+          setEmail(resolvedProfile.email);
+          setRole(resolvedProfile.role);
+          setProfile(resolvedProfile);
+          persistSession(sessionToken, resolvedProfile);
+        } catch (error) {
+          console.error('Failed to establish backend session', error);
+          setFirebaseUser(null);
+          setToken(null);
+          setEmail(null);
+          setRole(null);
+          setProfile(null);
+          clearPersistedSession();
         }
-
-        const sessionToken = await issueBackendSession(idToken, resolvedProfile);
-
-        setFirebaseUser(user);
-        setToken(sessionToken);
-        setEmail(resolvedProfile.email);
-        setRole(resolvedProfile.role);
-        setProfile(resolvedProfile);
-        persistSession(sessionToken, resolvedProfile);
-      } catch (error) {
-        console.error('Failed to establish backend session', error);
-        setFirebaseUser(null);
-        setToken(null);
-        setEmail(null);
-        setRole(null);
-        setProfile(null);
-        clearPersistedSession();
-      }
-      setIsLoading(false);
+        setIsLoading(false);
+      });
+    }).catch((error) => {
+      console.error('Failed to load Firebase session', error);
+      if (!cancelled) setIsLoading(false);
     });
 
-    return unsubscribe;
+    return () => {
+      cancelled = true;
+      unsubscribe?.();
+    };
   }, []);
 
   const login = (nextToken: string, nextProfile: UserProfile) => {
@@ -164,8 +176,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const logout = async () => {
-    if (auth && firebaseUser) {
-      await signOut(auth);
+    if (firebaseUser) {
+      const { auth } = await import('../services/firebase');
+      const { signOut } = await import('firebase/auth');
+      if (auth) await signOut(auth);
     }
     setToken(null);
     setEmail(null);
@@ -191,6 +205,8 @@ export const useAuth = () => {
 };
 
 export async function firebaseLogin(email: string, password: string) {
+  const { auth } = await import('../services/firebase');
+  const { signInWithEmailAndPassword } = await import('firebase/auth');
   if (!auth) throw new Error('Firebase not configured');
   return signInWithEmailAndPassword(auth, email, password);
 }
@@ -200,6 +216,9 @@ export async function firebaseRegisterWithData(
   password: string,
   profile: UserProfile,
 ) {
+  const { auth, db } = await import('../services/firebase');
+  const { createUserWithEmailAndPassword } = await import('firebase/auth');
+  const { doc, setDoc } = await import('firebase/firestore');
   if (!auth || !db) throw new Error('Firebase Auth/Firestore not configured');
   const credential = await createUserWithEmailAndPassword(auth, email, password);
   const nextProfile = { ...profile, uid: credential.user.uid, email: credential.user.email || email };

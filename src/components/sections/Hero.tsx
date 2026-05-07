@@ -44,7 +44,7 @@ export default function Hero() {
     vid.playsInline = true
     vid.defaultMuted = true
     vid.loop = true
-    vid.preload = 'auto'
+    vid.preload = 'metadata'
     const startVideo = () => {
       vid.play().catch(() => {
         const retry = () => {
@@ -96,7 +96,7 @@ export default function Hero() {
         muted
         playsInline
         loop
-        preload="auto"
+        preload="metadata"
         style={{
           position:'absolute', inset:0,
           width:'100%', height:'100%',

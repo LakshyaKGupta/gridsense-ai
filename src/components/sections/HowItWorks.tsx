@@ -1,20 +1,9 @@
-import { useRef } from "react";
-import { useScroll, useTransform, motion } from "framer-motion";
+import { motion } from "framer-motion";
 import { BrainCircuit, Zap, Map as MapIcon } from "lucide-react";
 
 export default function HowItWorks() {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const { scrollYProgress } = useScroll({
-    target: containerRef,
-    offset: ["start end", "end start"],
-  });
-
-  const scale = useTransform(scrollYProgress, [0, 0.2, 0.8, 1], [0.8, 1, 1, 0.8]);
-  const opacity = useTransform(scrollYProgress, [0, 0.2, 0.8, 1], [0, 1, 1, 0]);
-  const rotateX = useTransform(scrollYProgress, [0, 0.2], [20, 0]);
-
   return (
-    <section ref={containerRef} id="how" className="py-32 bg-[#0B0F14] relative perspective-1000" style={{ position: 'relative' }}>
+    <section id="how" className="py-32 bg-[#0B0F14] relative perspective-1000" style={{ position: 'relative' }}>
       <div className="max-w-6xl mx-auto px-6 mb-20 text-center">
         <span className="text-xs font-bold uppercase tracking-[2px] text-cyan-500 mb-4 block">
           How It Works
@@ -28,7 +17,11 @@ export default function HowItWorks() {
       </div>
 
       <motion.div 
-        style={{ scale, opacity, rotateX, transformStyle: "preserve-3d" }}
+        initial={{ opacity: 0, y: 32 }}
+        whileInView={{ opacity: 1, y: 0 }}
+        viewport={{ once: true, amount: 0.25 }}
+        transition={{ duration: 0.6, ease: "easeOut" }}
+        style={{ transformStyle: "preserve-3d" }}
         className="max-w-5xl mx-auto bg-slate-900 border border-slate-700/50 rounded-[2rem] shadow-2xl p-8 md:p-16 overflow-hidden relative"
       >
         <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/10 via-transparent to-emerald-500/10 pointer-events-none" />
