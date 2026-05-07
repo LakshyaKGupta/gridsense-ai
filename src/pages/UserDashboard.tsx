@@ -148,6 +148,12 @@ export default function UserDashboard() {
   }, [token, location.lat, location.lng, profile]);
 
   useEffect(() => {
+    if (selectedStationId !== null) {
+      void fetchDashboard(selectedStationId);
+    }
+  }, [selectedStationId]);
+
+  useEffect(() => {
     if (!token || !data?.zone?.id) return;
     dashboardAPI.getForecast(token, data.zone.id).then(setForecast).catch(() => undefined);
   }, [token, data?.zone?.id]);

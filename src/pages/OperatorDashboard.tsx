@@ -438,7 +438,7 @@ export default function OperatorDashboard() {
 
       <main className="relative z-10 mx-auto flex max-w-[1320px] flex-col gap-5 px-4 py-5 sm:px-6">
         {workspace === 'forecast' && forecastCenter && horizonPayload && (
-          <section className="rounded-[28px] border border-white/10 bg-white/5 p-6 shadow-2xl shadow-black/20 backdrop-blur-xl">
+          <section key={`${selectedZone}-${scenario}`} className="rounded-[28px] border border-white/10 bg-white/5 p-6 shadow-2xl shadow-black/20 backdrop-blur-xl">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
                 <p className="text-xs uppercase tracking-[0.3em] text-slate-400">Forecast Center</p>
@@ -627,7 +627,7 @@ export default function OperatorDashboard() {
         )}
 
         {workspace === 'overview' && (
-        <section className="grid gap-4 lg:grid-cols-[1.12fr_0.88fr]">
+        <section key={`${selectedZone}-${scenario}`} className="grid gap-4 lg:grid-cols-[1.12fr_0.88fr]">
           <div className="rounded-[28px] border border-white/10 bg-white/5 p-6 shadow-2xl shadow-black/20 backdrop-blur-xl">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
@@ -721,7 +721,7 @@ export default function OperatorDashboard() {
         )}
 
         {workspace === 'overview' && (
-          <section className="grid gap-5 xl:grid-cols-[0.9fr_1.1fr]">
+          <section key={`${selectedZone}-${scenario}-2`} className="grid gap-5 xl:grid-cols-[0.9fr_1.1fr]">
             <div className="rounded-[28px] border border-white/10 bg-white/5 p-6 backdrop-blur-xl">
               <div className="flex items-start justify-between gap-3">
                 <div>
@@ -860,7 +860,7 @@ export default function OperatorDashboard() {
 
         {workspace === 'overview' && (
         <>
-        <section className="grid gap-4 md:grid-cols-4">
+        <section key={`${selectedZone}-${scenario}-3`} className="grid gap-4 md:grid-cols-4">
           {[
             { label: 'Peak Delta', value: `${peakDelta >= 0 ? '+' : ''}${peakDelta} kW`, icon: Gauge, tone: peakDelta > 0 ? 'text-rose-300' : 'text-emerald-300' },
             { label: 'Peak Hour', value: data.forecast.peak.label, icon: TrendingUp, tone: 'text-cyan-300' },
@@ -1114,7 +1114,7 @@ export default function OperatorDashboard() {
         )}
 
         {workspace === 'operations' && (
-          <section className="space-y-5">
+          <section key={`${selectedZone}-${scenario}`} className="space-y-5">
             <div className="rounded-[28px] border border-white/10 bg-white/5 p-6 backdrop-blur-xl">
               <div className="flex items-center justify-between mb-6">
                 <div>
@@ -1223,7 +1223,7 @@ export default function OperatorDashboard() {
         )}
 
         {workspace === 'planning' && (
-          <section className="space-y-5">
+          <section key={`${selectedZone}-${scenario}`} className="space-y-5">
             <div className="rounded-[28px] border border-white/10 bg-white/5 p-6 backdrop-blur-xl">
               <p className="text-xs uppercase tracking-[0.3em] text-slate-400">Planning Insights</p>
               <h2 className="mt-2 text-2xl font-semibold text-white">Infrastructure strategy</h2>
@@ -1329,7 +1329,7 @@ export default function OperatorDashboard() {
         )}
 
         {workspace === 'simulator' && (
-          <section className="space-y-5">
+          <section key={`${selectedZone}-${scenario}`} className="space-y-5">
             <div className="rounded-[28px] border border-white/10 bg-white/5 p-6 backdrop-blur-xl">
               <p className="text-xs uppercase tracking-[0.3em] text-slate-400">Scenario Simulator</p>
               <h2 className="mt-2 text-2xl font-semibold text-white">What-if analysis</h2>
@@ -1427,7 +1427,7 @@ export default function OperatorDashboard() {
         )}
 
         {workspace === 'alerts' && (
-          <section className="space-y-5">
+          <section key={`${selectedZone}-${scenario}`} className="space-y-5">
             <div className="rounded-[28px] border border-white/10 bg-white/5 p-6 backdrop-blur-xl">
               <div className="flex items-center justify-between gap-3">
                 <div>
