@@ -25,9 +25,9 @@ async def simulate_stations():
 async def get_nearby_stations(
     lat: float = Query(...),
     lng: float = Query(...),
-    limit: int = Query(default=16, ge=10, le=24),
+    limit: int = Query(default=24, ge=20, le=32),
 ):
-    """Return 10-24 real OSM stations near the requested Bengaluru location."""
+    """Return 20-32 real OSM stations near the requested Bengaluru location."""
     stations = await get_real_stations({"lat": lat, "lng": lng})
     nearby = stations[:limit]
 

@@ -27,6 +27,10 @@ REAL_BACKUP_STATIONS = [
     {"id": 900017, "name": "Ola Hyper Charger", "lat": 12.9337755, "lng": 77.6236693, "operator": "Ola Electric", "source": "backup_osm"},
     {"id": 900018, "name": "Ola Hypercharger", "lat": 12.9322172, "lng": 77.6142725, "operator": "Ola Electric", "source": "backup_osm"},
     {"id": 900019, "name": "Pulse", "lat": 12.9805484, "lng": 77.5978893, "operator": "Pulse", "source": "backup_osm"},
+    {"id": 900020, "name": "BluSmart Charging Station", "lat": 13.1776646, "lng": 77.6630831, "operator": "BluSmart", "source": "backup_osm"},
+    {"id": 900021, "name": "BluSmart Charging Station", "lat": 13.1821565, "lng": 77.6710546, "operator": "BluSmart", "source": "backup_osm"},
+    {"id": 900022, "name": "GLIDA Charging Station", "lat": 13.1831411, "lng": 77.6760596, "operator": "GLIDA", "source": "backup_osm"},
+    {"id": 900023, "name": "Ola Hypercharger Richmond Road", "lat": 12.9654060, "lng": 77.6002473, "operator": "Ola Electric", "source": "backup_osm"},
 ]
 
 class EVStationFetcher:
@@ -159,7 +163,7 @@ station_fetcher = EVStationFetcher()
 async def get_real_stations(user_location: Optional[Dict] = None) -> List[Dict]:
     """Get real EV stations with status"""
     await station_fetcher.fetch_bengaluru_stations()
-    return station_fetcher.get_stations_with_status(user_location, limit=16)
+    return station_fetcher.get_stations_with_status(user_location, limit=24)
 
 
 async def calculate_route(user_lat: float, user_lng: float, station_lat: float, station_lng: float) -> Dict:

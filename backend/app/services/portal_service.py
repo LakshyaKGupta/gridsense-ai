@@ -644,7 +644,7 @@ class PortalService:
             "nearest_station": nearest_station,
             "selected_station": route_station,
             "route": route,
-            "station_options": stations[:16],
+            "station_options": stations[:24],
             "alternatives": alternatives,
             "decision_support": decision_support,
             "charging_recommendation": best_window,
@@ -679,7 +679,7 @@ class PortalService:
     def _build_station_alternatives(self, stations: List[Dict], battery_capacity_kwh: Optional[float]) -> List[Dict]:
         target_energy = max(12.0, min((battery_capacity_kwh or 45) * 0.42, 32.0))
         alternatives = []
-        for station in stations[:5]:
+        for station in stations[:8]:
             drive_minutes = max(4, int(round(station["distance"] * 3.8)))
             charge_minutes = max(18, int(round(target_energy / 1.1)))
             total_minutes = drive_minutes + int(round(station["wait_time"])) + charge_minutes
@@ -722,7 +722,7 @@ class PortalService:
         queue_minutes = round((selected_station or nearest_station or {}).get("wait_time", 0))
         charge_minutes = max(18, int(round(target_energy / 1.1)))
         total_session_minutes = route_minutes + queue_minutes + charge_minutes
-        best_alternative = min(stations[:5], key=lambda station: station["wait_time"] + (station["distance"] * 3.8)) if stations else None
+        best_alternative = min(stations[:8], key=lambda station: station["wait_time"] + (station["distance"] * 3.8)) if stations else None
         best_alternative_minutes = 0
         if best_alternative:
             best_alternative_minutes = max(4, int(round(best_alternative["distance"] * 3.8))) + int(round(best_alternative["wait_time"])) + charge_minutes
@@ -842,7 +842,7 @@ class PortalService:
             stations,
             key=lambda station: (0 if station["zone_name"] == selected_zone_name else 1, -station["load"], station["distance"]),
         )
-        for station in prioritized[:16]:
+        for station in prioritized[:24]:
             utilization = round((station["load"] / max(station["capacity"], 1)) * 100, 1)
             workspace.append(
                 {
@@ -937,7 +937,7 @@ class PortalService:
             return drive_minutes(station) + queue + charge
 
         # Candidate set: nearby stations list already sorted by proximity in get_real_stations()
-        candidates = stations[:6]
+        candidates = stations[:10]
 
         # Best station right now: minimize (drive + wait), but avoid RED if possible.
         non_red = [s for s in candidates if s.get("status") != "RED"]

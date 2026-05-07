@@ -63,4 +63,4 @@ class LocationRecommender:
             )
 
         recommendations.sort(key=lambda item: item["grid_stress_score"], reverse=True)
-        return recommendations[:5]
+        return recommendations[:24]
